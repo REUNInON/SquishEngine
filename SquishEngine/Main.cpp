@@ -11,6 +11,7 @@ Renderer g_renderer;
 // Window Creation Helper
 HWND SetupWindow(HINSTANCE hInstance, int width, int height);
 
+
 // ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
