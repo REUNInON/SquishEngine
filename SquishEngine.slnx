@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="SquishEngine/SquishEngine.vcxproj" />
+  <Project Path="SquishEngine/SquishEngine.vcxproj" Id="fed1f669-8c93-4a4a-8502-a37dd1b2ba7f" />
 </Solution>
