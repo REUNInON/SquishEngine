@@ -1,4 +1,5 @@
 #include "PhysicsEngine.h"
+#include <cmath>
 
 // ===========================
 // Constructor and Destructor
@@ -125,6 +126,133 @@ void PhysicsEngine::HandleCollisions()
 
 void PhysicsEngine::SolveConstraints()
 {
+	// =============================
+	// 0. MAIN SOLVER LOOP
+	// =============================
+	// m_solverIterations: less iterations = softer body, more iterations = stiffer body.
+	for (uint32_t i = 0; i < m_solverIterations; ++i)
+	{
+		// =============================
+		// 1. SOLVE DISTANCE CONSTRAINTS
+		// =============================
+		for (const auto& constraint : m_distanceConstraints)
+		{
+			
+			// 1.0. Reference the two particles involved in the constraint.
+			Particle2D& p1 = m_particles[constraint.p1];
+			Particle2D& p2 = m_particles[constraint.p2];
+
+			// 1.1. Calculate the current distance between the two particles.
+			float deltaX = p2.position[0] - p1.position[0];
+			float deltaY = p2.position[1] - p1.position[1];
+
+			float currentDistance = std::sqrt(deltaX * deltaX + deltaY * deltaY); // Pythagorean Theorem
+
+			if (currentDistance == 0.0f) continue; // Skip if particles are in the same position to avoid division by zero.
+
+			// 1.2. Calculate how much the current distance deviates from the rest length.
+			float error = currentDistance - constraint.restLength; // Positive if stretched, Negative if compressed
+
+			// 1.3. Calculate the correction amount based on the stiffness of the constraint.
+			float totalInverseMass = p1.inverseMass + p2.inverseMass;
+			if (totalInverseMass <= 0.0f) continue; // Skip if both particles are immovable to avoid division by zero.
+			float correctionAmount = (error / totalInverseMass) * constraint.stiffness; // If stiffness is 1.0, full correction is applied. If stiffness is 0.5, half of the correction is applied etc.
+
+
+			// 1.4. Calculate the correction vector (direction and magnitude) to apply to each particle.
+			float correctionX = (deltaX / currentDistance) * correctionAmount;
+			float correctionY = (deltaY / currentDistance) * correctionAmount;
+
+			// 1.5. Apply the correction: P1 moves towards P2, P2 moves towards P1.
+			p1.position[0] += correctionX * p1.inverseMass;
+			p1.position[1] += correctionY * p1.inverseMass;
+			p2.position[0] -= correctionX * p2.inverseMass;
+			p2.position[1] -= correctionY * p2.inverseMass;
+		}
+
+		// =============================
+		// 2. SOLVE AREA CONSTRAINTS
+		// =============================
+		for (const auto& constraint : m_areaConstraints)
+		{
+			float currentArea = 0.0f;
+			uint32_t count = constraint.particleCount;
+			if (count < 3) continue;
+
+			// 2.1. Calculate the current area using the Shoelace formula.
+			for (uint32_t j = 0; j < count; ++j)
+			{
+				uint32_t idx1 = constraint.particleIndices[j];
+				uint32_t idx2 = constraint.particleIndices[(j + 1) % count]; // Wrap around to the first particle
+
+				const Particle2D& p1 = m_particles[idx1];
+				const Particle2D& p2 = m_particles[idx2];
+
+				// Cross Multiplication for Shoelace formula: (X1 * Y2 - X2 * Y1)
+				currentArea += (p1.position[0] * p2.position[1]) - (p2.position[0] * p1.position[1]);
+			}
+			currentArea *= 0.5f;
+
+			// 2.2. Calculate how much the current area deviates from the rest area.
+			float targetArea = constraint.restArea * constraint.pressure; // (Pressure 1 = Normal Volume, 1.2 = Inflated, 0.8 Deflated)
+			float error = currentArea - targetArea;
+			// if (std::abs(error) < 0.0001f) continue;
+
+			// 2.3. Calculate the gradients (push directions).
+			float gradientsX[MAX_AREA_PARTICLES];
+			float gradientsY[MAX_AREA_PARTICLES];
+
+			float denominator = 0.0f; // Used to avoid division by zero when normalizing gradients
+
+			for (uint32_t j = 0; j < count; ++j)
+			{
+				// Particle Indices
+				uint32_t prevIdx = constraint.particleIndices[(j + count - 1) % count]; // Wrap around
+				uint32_t currentIdx = constraint.particleIndices[j];
+				uint32_t nextIdx = constraint.particleIndices[(j + 1) % count]; // Wrap around
+
+				// Particle References
+				const Particle2D& pPrev = m_particles[prevIdx];
+				const Particle2D& pCurrent = m_particles[currentIdx];
+				const Particle2D& pNext = m_particles[nextIdx];
+
+				// Gradient Calculation: (Y_next - Y_prev, X_prev - X_next)
+				float gradX = 0.5f * (pNext.position[1] - pPrev.position[1]);
+				float gradY = 0.5f * (pPrev.position[0] - pNext.position[0]);
+
+				// Store gradients to temporary arrays
+				gradientsX[j] = gradX;
+				gradientsY[j] = gradY;
+
+				float weight = pCurrent.inverseMass;
+				if (weight > 0.0f)
+				{
+					denominator += (gradX * gradX + gradY * gradY) * weight;
+				}
+			}
+			// 2.4.
+			if (denominator <= 0.0f) continue; // Skip if all particles are immovable to avoid division by zero.
+
+			// PBD Multiplier (Lambda)
+			float lambda = -error / denominator;
+
+			for (uint32_t j = 0; j < count; ++j)
+			{
+				uint32_t idx = constraint.particleIndices[j];
+				Particle2D& p = m_particles[idx];
+				
+				float weight = p.inverseMass;
+				if (weight > 0.0f)
+				{
+					// Apply correction based on the gradient and lambda
+					p.position[0] += (gradientsX[j] * lambda) * weight;
+					p.position[1] += (gradientsY[j] * lambda) * weight;
+				}
+			}
+			
+		}
+
+	}
 }
 
 void PhysicsEngine::UpdateVelocities(float deltaTime)

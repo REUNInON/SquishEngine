@@ -30,9 +30,10 @@ struct DistanceConstraint // 16-Byte Block
 	float stiffness; // How strongly the constraint is enforced (0: gel-like to 1: rigid)
 };
 
+constexpr uint32_t MAX_AREA_PARTICLES = 16;
 struct AreaConstraint // 80-Byte Block (76 Bytes used, 4 Bytes padding for alignment)
 {
-	uint32_t particleIndices[16]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
+	uint32_t particleIndices[MAX_AREA_PARTICLES]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
 
 	uint32_t particleCount; // Number of particles in the area constraint
 	float restArea; // The ideal area that the particles should maintain, calculated with Shoelace formula
@@ -75,6 +76,7 @@ public:
 	const std::vector<Particle2D>& GetParticles() const { return m_particles; }
 
 private:
+	uint32_t m_solverIterations = 10; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
 	// ===========================
 	// Internal Simulation Steps
 	// ===========================
