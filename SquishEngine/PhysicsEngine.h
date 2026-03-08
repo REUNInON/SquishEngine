@@ -31,7 +31,7 @@ struct DistanceConstraint // 16-Byte Block
 };
 
 constexpr uint32_t MAX_AREA_PARTICLES = 16;
-struct AreaConstraint // 80-Byte Block (76 Bytes used, 4 Bytes padding for alignment)
+struct AreaConstraint
 {
 	uint32_t particleIndices[MAX_AREA_PARTICLES]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
 

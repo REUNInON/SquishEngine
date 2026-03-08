@@ -39,16 +39,50 @@ uint32_t PhysicsEngine::AddParticle(float x, float y, float mass)
 	// 4. Set mass
 	p.mass = mass;
 	p.inverseMass = (mass > 0.0f) * (1.0f / (mass + (mass <= 0.0f))); // mass <= 0 Case Handled: 0 * (1 / (mass + 1))
+	
+	// 5. Add to particle list and return index
+	m_particles.push_back(p);
 
-	return 0;
+	return static_cast<uint32_t>(m_particles.size() - 1);
 }
 
+/// <summary>
+/// Adds a distance constraint between two particles identified by their indices, specifying the desired rest length and stiffness of the constraint. The constraint is stored in a list for later processing during the simulation step to maintain the specified distance between the particles. Stiffness controls how strongly the constraint is enforced, allowing for soft or rigid connections.
+/// </summary>
+/// <param name="p1"></param>
+/// <param name="p2"></param>
+/// <param name="restLength"></param>
+/// <param name="stiffness"></param>
 void PhysicsEngine::AddDistanceConstraint(uint32_t p1, uint32_t p2, float restLength, float stiffness)
 {
+	DistanceConstraint constraint;
+	constraint.p1 = p1;
+	constraint.p2 = p2;
+	constraint.restLength = restLength;
+	constraint.stiffness = stiffness;
+
+	m_distanceConstraints.push_back(constraint);
 }
 
+/// <summary>
+/// Adds an area constraint that maintains a specified area for a group of particles defined by their indices. The rest area is the ideal area calculated using the Shoelace formula, and the pressure parameter controls how much the particles should resist changes to this area (0.8: deflated, 1.0: normal, 1.2: inflated). The constraint is stored in a list for later processing during the simulation step to maintain the specified area among the particles. The function checks that the number of particles is between 3 and a defined maximum to ensure valid area constraints.
+/// </summary>
+/// <param name="particleIndices"></param>
+/// <param name="restArea"></param>
+/// <param name="pressure"></param>
 void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndices, float restArea, float pressure)
 {
+	if (particleIndices.size() < 3 || particleIndices.size() > MAX_AREA_PARTICLES) return; // Area constraint requires at least 3 particles and has a maximum limit
+	AreaConstraint constraint;
+	constraint.particleCount = static_cast<uint32_t>(particleIndices.size());
+	constraint.restArea = restArea;
+	constraint.pressure = pressure;
+	// Copy particle indices to the fixed-size array in the constraint
+	for (size_t i = 0; i < particleIndices.size(); ++i)
+	{
+		constraint.particleIndices[i] = particleIndices[i];
+	}
+	m_areaConstraints.push_back(constraint);
 }
 
 // ===========================
@@ -124,6 +158,13 @@ void PhysicsEngine::HandleCollisions()
 	}
 }
 
+/// <summary>
+/// Solves all distance and area constraints in the simulation iteratively to maintain the physical properties of the system.
+/// The solver runs for a specified number of iterations, where each iteration applies corrections to particle positions based on the constraints.
+/// Distance constraints ensure that pairs of particles maintain a specified rest length, while area constraints ensure that groups of particles maintain a specified area.
+/// The stiffness and pressure parameters control how strongly the constraints are enforced, allowing for soft or rigid behavior.
+/// This function is designed to be called from a single thread and modifies particle positions directly to satisfy the constraints.
+/// </summary>
 void PhysicsEngine::SolveConstraints()
 {
 	// =============================
