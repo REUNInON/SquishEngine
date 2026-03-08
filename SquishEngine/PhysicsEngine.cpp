@@ -17,7 +17,8 @@ PhysicsEngine::~PhysicsEngine()
 // ===========================
 
 /// <summary>
-/// Creates a new particle with the specified position and mass, initializes its velocity and force to zero, and returns its index in the particle list. The inverse mass is calculated for efficient physics calculations, handling the case of zero or negative mass appropriately.
+/// Creates a new particle with the specified position and mass, initializes its velocity and force to zero, and returns its index in the particle list.
+/// The inverse mass is calculated for efficient physics calculations, handling the case of zero or negative mass appropriately.
 /// </summary>
 /// <param name="x"></param>
 /// <param name="y"></param>
@@ -47,7 +48,9 @@ uint32_t PhysicsEngine::AddParticle(float x, float y, float mass)
 }
 
 /// <summary>
-/// Adds a distance constraint between two particles identified by their indices, specifying the desired rest length and stiffness of the constraint. The constraint is stored in a list for later processing during the simulation step to maintain the specified distance between the particles. Stiffness controls how strongly the constraint is enforced, allowing for soft or rigid connections.
+/// Adds a distance constraint between two particles identified by their indices, specifying the desired rest length and stiffness of the constraint.
+/// The constraint is stored in a list for later processing during the simulation step to maintain the specified distance between the particles.
+/// Stiffness controls how strongly the constraint is enforced, allowing for soft or rigid connections.
 /// </summary>
 /// <param name="p1"></param>
 /// <param name="p2"></param>
@@ -65,7 +68,10 @@ void PhysicsEngine::AddDistanceConstraint(uint32_t p1, uint32_t p2, float restLe
 }
 
 /// <summary>
-/// Adds an area constraint that maintains a specified area for a group of particles defined by their indices. The rest area is the ideal area calculated using the Shoelace formula, and the pressure parameter controls how much the particles should resist changes to this area (0.8: deflated, 1.0: normal, 1.2: inflated). The constraint is stored in a list for later processing during the simulation step to maintain the specified area among the particles. The function checks that the number of particles is between 3 and a defined maximum to ensure valid area constraints.
+/// Adds an area constraint that maintains a specified area for a group of particles defined by their indices.
+/// The rest area is the ideal area calculated using the Shoelace formula, and the pressure parameter controls how much the particles should resist changes to this area (0.8: deflated, 1.0: normal, 1.2: inflated).
+/// The constraint is stored in a list for later processing during the simulation step to maintain the specified area among the particles.
+/// The function checks that the number of particles is between 3 and a defined maximum to ensure valid area constraints.
 /// </summary>
 /// <param name="particleIndices"></param>
 /// <param name="restArea"></param>
@@ -89,8 +95,16 @@ void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndic
 // Simulation Control
 // ===========================
 
+/// <summary>
+/// Main simulation step that advances the physics simulation by a specified time step (deltaTime).
+/// </summary>
+/// <param name="deltaTime">The time step (in seconds) over which to advance the simulation.</param>
 void PhysicsEngine::StepSimulation(float deltaTime)
 {
+	Integrate(deltaTime);
+	HandleCollisions();
+	SolveConstraints();
+	UpdateVelocities(deltaTime);
 }
 
 // ===========================
@@ -98,7 +112,8 @@ void PhysicsEngine::StepSimulation(float deltaTime)
 // ===========================
 
 /// <summary>
-/// Simulates the motion of particles by applying forces, updating velocities and positions using a symplectic Euler integration method, and applying a global damping factor to simulate energy loss. After integration, forces are reset for the next simulation step.
+/// Simulates the motion of particles by applying forces, updating velocities and positions using a symplectic Euler integration method, and applying a global damping factor to simulate energy loss.
+/// After integration, forces are reset for the next simulation step.
 /// NON-MULTITHREADED: This function is designed to be called from a single thread.
 /// </summary>
 /// <param name="deltaTime">The time step (in seconds) over which to integrate the simulation.</param>
@@ -106,7 +121,7 @@ void PhysicsEngine::Integrate(float deltaTime)
 {
 	// World Forces
 	const float gravity[2] = { 0.0f, -9.81f }; // Earth gravity, applied to all particles
-	const float damping = 0.98f; // Global damping factor to simulate energy loss, applied to velocities
+	const float damping = 0.99f; // Global damping factor to simulate energy loss, applied to velocities
 
 	// Apply forces and integrate motion for each particle
 	for (auto& p : m_particles)
@@ -126,6 +141,10 @@ void PhysicsEngine::Integrate(float deltaTime)
 		p.velocity[0] *= damping; // v = v * damping
 		p.velocity[1] *= damping; // v = v * damping
 
+		// Store previous position for velocity update after constraint solving.
+		p.prevPosition[0] = p.position[0];
+		p.prevPosition[1] = p.position[1];
+
 		// 4. Symplectic Euler Step 2: Update position based on velocity.
 		p.position[0] += p.velocity[0] * deltaTime; // x = x + v * dt
 		p.position[1] += p.velocity[1] * deltaTime; // y = y + v * dt
@@ -139,7 +158,7 @@ void PhysicsEngine::Integrate(float deltaTime)
 void PhysicsEngine::HandleCollisions()
 {
 	// Floor of the simulation world at y = -0.5. Make it adjustable in the future for different environments.
-	const float floorY = -0.5f;
+	const float floorY = -1.0f;
 
 	for (auto& p : m_particles)
 	{
@@ -296,8 +315,24 @@ void PhysicsEngine::SolveConstraints()
 	}
 }
 
+
+/// <summary>
+///	Updates particle velocities based on the changes in position after constraint solving.
+/// </summary>
+/// <param name="deltaTime"></param>
 void PhysicsEngine::UpdateVelocities(float deltaTime)
 {
+	if (deltaTime <= 0.0f) return;
+
+	for (auto& p : m_particles)
+	{
+		if (p.inverseMass <= 0.0f) continue; // Skip immovable particles
+
+		// Update velocity based on the change in position after constraint solving.
+		p.velocity[0] = (p.position[0] - p.prevPosition[0]) / deltaTime;
+		p.velocity[1] = (p.position[1] - p.prevPosition[1]) / deltaTime;
+	}
+
 }
 
 
