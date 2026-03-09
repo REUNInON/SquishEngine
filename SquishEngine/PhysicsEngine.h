@@ -40,7 +40,10 @@ struct AreaConstraint
 	float pressure; // Internal pressure (0.8: deflated, 1.0: normal, 1.2: inflated)
 };
 
-// TODO: Physics Engine Class Implementation
+
+// TODO: [ISSUE #1] Zemin çarpışmasını (HandleCollisions) ayrı bir pass olmaktan çıkarıp,
+// SolveConstraints döngüsünün İÇİNE bir "Ground Constraint" olarak taşımak.
+// PBD (Position Based Dynamics) yaklaşımında, zemin çarpışması da bir tür constraint olarak ele alınabilir.
 class PhysicsEngine
 {
 public:
