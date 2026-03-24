@@ -1,8 +1,7 @@
 #pragma once
 
 #include "Renderer.h"
-
-
+#include "PhysicsEngine.h"
 
 class ParticlePipeline
 {
@@ -12,7 +11,7 @@ public:
 
 	HRESULT Initialize(Renderer& renderer);
 
-	void Render(Renderer& renderer);
+	void Render(Renderer& renderer, const std::vector<Particle2D>& particles, const std::vector<DistanceConstraint>& constraints);
 
 	void Shutdown();
 

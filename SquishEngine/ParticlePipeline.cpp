@@ -10,6 +10,27 @@
 #endif
 
 /// <summary>
+/// Represents a 2D particle position which will be passed to the GPU as a vertex.
+/// </summary>
+struct ParticleVertex
+{
+	float x, y;
+};
+
+void ParticlePipeline::Render(Renderer& renderer, const std::vector<Particle2D>& particles, const std::vector<DistanceConstraint>& constraints)
+{
+}
+
+void ParticlePipeline::Shutdown()
+{
+}
+
+HRESULT ParticlePipeline::Initialize(Renderer& renderer)
+{
+	return E_NOTIMPL;
+}
+
+/// <summary>
 /// Creates an empty root signature that allows only input assembler input layout, since we will not use any textures or constant buffers in our particle shader.
 /// </summary>
 /// <param name="renderer">Renderer.</param>
@@ -116,10 +137,69 @@ HRESULT ParticlePipeline::CreatePSO_(Renderer& renderer)
 
 HRESULT ParticlePipeline::CreateIndexBuffer_(Renderer& renderer)
 {
-    return E_NOTIMPL;
+	// BUFFER SIZEE: 10000 particles, each with 2 vertices (line list)
+	const UINT MAX_LINES = 20000;
+	const UINT MAX_INDICES = MAX_LINES * 2; // 2 indices per line
+	const UINT64 ibSize = MAX_INDICES * sizeof(uint32_t);
+
+	// BUFFER DESCRIPTION: TYPE - UPLOAD
+	D3D12_RESOURCE_DESC desc = {};
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.Width = ibSize;
+	desc.Height = 1;
+	desc.DepthOrArraySize = 1;
+	desc.MipLevels = 1;
+	desc.Format = DXGI_FORMAT_UNKNOWN;
+	desc.SampleDesc.Count = 1;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	// CREATE THE INDEX BUFFER RESOURCE IN UPLOAD HEAP (CPU-WRITABLE)
+	DX(renderer.CreateBuffer(
+			desc, 
+			D3D12_HEAP_TYPE_UPLOAD, 
+			D3D12_RESOURCE_STATE_GENERIC_READ, 
+			m_ib
+	));
+
+	// INDEX BUFFER VIEW
+	m_ibView.BufferLocation = m_ib->GetGPUVirtualAddress();
+	m_ibView.Format = DXGI_FORMAT_R32_UINT;
+	m_ibView.SizeInBytes = static_cast<UINT>(ibSize);
+
+    return S_OK;
 }
 
 HRESULT ParticlePipeline::CreateVertexBuffer_(Renderer& renderer)
 {
-    return E_NOTIMPL;
+	// BUFFER SIZE: 10000 particles, each with 2 floats (x, y)
+	const UINT MAX_PARTICLES = 10000;
+	const UINT64 vbSize = MAX_PARTICLES * sizeof(ParticleVertex);
+
+	// BUFFER DESCRIPTION: TYPE - UPLOAD
+	D3D12_RESOURCE_DESC desc = {};
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.Width = vbSize;
+	desc.Height = 1;
+	desc.DepthOrArraySize = 1;
+	desc.MipLevels = 1;
+	desc.Format = DXGI_FORMAT_UNKNOWN;
+	desc.SampleDesc.Count = 1;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	// CREATE THE VERTEX BUFFER RESOURCE IN UPLOAD HEAP (CPU-WRITABLE)
+	DX(renderer.CreateBuffer(
+		desc, 
+		D3D12_HEAP_TYPE_UPLOAD, 
+		D3D12_RESOURCE_STATE_GENERIC_READ, 
+		m_vb
+	));
+
+	// VERTEX BUFFER VIEW
+	m_vbView.BufferLocation = m_vb->GetGPUVirtualAddress();
+	m_vbView.StrideInBytes = sizeof(ParticleVertex);
+	m_vbView.SizeInBytes = static_cast<UINT>(vbSize);
+
+	return S_OK;
 }
