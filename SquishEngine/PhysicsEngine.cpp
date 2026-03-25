@@ -374,7 +374,8 @@ void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, 
 	// 2. CREATE THE CORE (The Hub)
 	// ==========================================
 	// This central particle acts as the anchor for the spokes, preventing the circle from collapsing on itself.
-	uint32_t centerIndex = AddParticle(centerX, centerY, particleMass);
+	float coreMass = particleMass * (numParticles * 0.5f);
+	uint32_t centerIndex = AddParticle(centerX, centerY, coreMass);
 
 	// Array to store the indices of the outer skin particles for the area constraint.
 	std::vector<uint32_t> perimeterIndices;

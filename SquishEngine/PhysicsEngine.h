@@ -79,7 +79,7 @@ public:
 	void CreateJellyBall(float centerX, float centerY, float radius, uint32_t numParticles, float particleMass, float stiffness);
 
 private:
-	uint32_t m_solverIterations = 10; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
+	uint32_t m_solverIterations = 8; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
 	// ===========================
 	// Internal Simulation Steps
 	// ===========================

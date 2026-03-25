@@ -56,7 +56,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
     //g_physics.CreateJellyBox(0.0f, 1.0f, 0.4f, 0.001f, 0.01f); // Example Jelly Box
 
-    g_physics.CreateJellyBall(0, 5, 0.5f, 64, 0.8f, 0.01f);
+    g_physics.CreateJellyBall(0, 5, 0.4f, 64, 1.0f, 0.002f);
 
     // 5. GAME LOOP
 
