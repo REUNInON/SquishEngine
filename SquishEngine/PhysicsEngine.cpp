@@ -2,17 +2,6 @@
 #include <cmath>
 
 // ===========================
-// Constructor and Destructor
-// ===========================
-PhysicsEngine::PhysicsEngine()
-{
-}
-
-PhysicsEngine::~PhysicsEngine()
-{
-}
-
-// ===========================
 // Particle Management
 // ===========================
 
@@ -335,4 +324,22 @@ void PhysicsEngine::UpdateVelocities(float deltaTime)
 
 }
 
+void PhysicsEngine::CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness)
+{
+	// 4 CORNERS OF THE BOX
+	uint32_t p0 = AddParticle(startX, startY, particleMass);               // Bottom Left
+	uint32_t p1 = AddParticle(startX + size, startY, particleMass);        // Bottom Right
+	uint32_t p2 = AddParticle(startX + size, startY + size, particleMass); // Top Right
+	uint32_t p3 = AddParticle(startX, startY + size, particleMass);        // Top Left
 
+	// 4 SIDES OF THE BOX
+	AddDistanceConstraint(p0, p1, size, stiffness); // Bottom
+	AddDistanceConstraint(p1, p2, size, stiffness); // Right
+	AddDistanceConstraint(p2, p3, size, stiffness); // Top
+	AddDistanceConstraint(p3, p0, size, stiffness); // Left
+
+	// Connect the diagonals to prevent the box from collapsing on itself (Diagonal length: size * sqrt(2))
+	float diagonal = size * 1.41421356f;
+	AddDistanceConstraint(p0, p2, diagonal, stiffness); // Bottom Left -> Top Right
+	AddDistanceConstraint(p1, p3, diagonal, stiffness); // Bottom Right -> Top Left
+}

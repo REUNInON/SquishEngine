@@ -47,11 +47,6 @@ struct AreaConstraint
 class PhysicsEngine
 {
 public:
-	// ===========================
-	// Constructor and Destructor
-	// ===========================
-	PhysicsEngine();
-	~PhysicsEngine();
 
 	// ===========================
 	// Particle Management
@@ -77,6 +72,9 @@ public:
 	// Getter for Rendering
 	// ===========================
 	const std::vector<Particle2D>& GetParticles() const { return m_particles; }
+	const std::vector<DistanceConstraint>& GetDistanceConstraints() const { return m_distanceConstraints; }
+
+	void CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness);
 
 private:
 	uint32_t m_solverIterations = 10; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.

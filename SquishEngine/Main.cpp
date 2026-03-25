@@ -45,7 +45,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return -1;
     }
 
-    std::cout << "Initialization Complete!" << std::endl;
+    std::cout << "Renderer Initialized!" << std::endl;
+
+	// 3. INITIALIZE PARTICLE PIPELINE
+    if (FAILED(g_pipeline.Initialize(g_renderer)))
+    {
+        MessageBox(hWnd, L"Failed to initialize Particle Pipeline!", L"Error", MB_OK | MB_ICONERROR);
+        return -1;
+	}
+
+    g_physics.CreateJellyBox(0.0f, 1.0f, 0.4f, 0.001f, 0.01f); // Example Jelly Box
 
     // 5. GAME LOOP
 
@@ -59,10 +68,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         }
         else
         {
+			// ===========================================================================
+			// SIMULATION STEP
+			// ============================================================================
+			g_physics.StepSimulation(0.016f); // Simulate at 60 FPS, fixed time step
+
             // ===========================================================================
             // RENDERING CODE
             // ===========================================================================
             g_renderer.BeginFrame();
+			g_pipeline.Render(g_renderer, g_physics.GetParticles(), g_physics.GetDistanceConstraints());
             g_renderer.EndFrame();
         }
     }
