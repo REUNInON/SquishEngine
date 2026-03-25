@@ -343,3 +343,89 @@ void PhysicsEngine::CreateJellyBox(float startX, float startY, float size, float
 	AddDistanceConstraint(p0, p2, diagonal, stiffness); // Bottom Left -> Top Right
 	AddDistanceConstraint(p1, p3, diagonal, stiffness); // Bottom Right -> Top Left
 }
+
+/// <summary>
+/// Creates a soft-body circular jelly using a "Bicycle Wheel" topology.
+/// A central core particle holds the structure together, connected to perimeter particles (spokes).
+/// The perimeter particles are connected to each other to form the outer skin (rim).
+/// An area constraint is applied to the perimeter to preserve the internal volume (pressure) and prevent inversion.
+/// </summary>
+/// <param name="centerX">X coordinate of the center.</param>
+/// <param name="centerY">Y coordinate of the center.</param>
+/// <param name="radius">Radius of the jelly ball.</param>
+/// <param name="numParticles">Number of perimeter particles (Max 16 due to Area Constraint limits).</param>
+/// <param name="particleMass">Mass of each individual particle.</param>
+/// <param name="stiffness">Stiffness of the distance constraints (springs).</param>
+void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, uint32_t numParticles, float particleMass, float stiffness)
+{
+	// ==========================================
+	// 1. GUARD CLAUSES
+	// ==========================================
+	// An area constraint requires a minimum of 3 particles to form a valid polygon.
+	if (numParticles < 3) return;
+
+	// Clamp the number of particles to the maximum allowed by our fixed-size, GPU-friendly arrays.
+	if (numParticles > MAX_AREA_PARTICLES)
+	{
+		numParticles = MAX_AREA_PARTICLES;
+	}
+
+	// ==========================================
+	// 2. CREATE THE CORE (The Hub)
+	// ==========================================
+	// This central particle acts as the anchor for the spokes, preventing the circle from collapsing on itself.
+	uint32_t centerIndex = AddParticle(centerX, centerY, particleMass);
+
+	// Array to store the indices of the outer skin particles for the area constraint.
+	std::vector<uint32_t> perimeterIndices;
+	perimeterIndices.reserve(numParticles);
+
+	// ==========================================
+	// 3. CREATE PERIMETER PARTICLES (The Outer Skin)
+	// ==========================================
+	// Distribute them evenly around the center using polar to cartesian coordinates.
+	const float PI = 3.14159265f;
+	float angleStep = (2.0f * PI) / static_cast<float>(numParticles);
+
+	for (uint32_t i = 0; i < numParticles; ++i)
+	{
+		float angle = i * angleStep;
+		float px = centerX + std::cos(angle) * radius;
+		float py = centerY + std::sin(angle) * radius;
+
+		uint32_t pIdx = AddParticle(px, py, particleMass);
+		perimeterIndices.push_back(pIdx);
+	}
+
+	// ==========================================
+	// 4. CONNECT THE DISTANCE CONSTRAINTS (Springs)
+	// ==========================================
+	// Calculate the exact straight-line distance between two neighboring particles on the perimeter.
+	// Formula: distance = 2 * r * sin(theta / 2)
+	float rimLength = 2.0f * radius * std::sin(angleStep * 0.5f);
+
+	for (uint32_t i = 0; i < numParticles; ++i)
+	{
+		uint32_t currentParticle = perimeterIndices[i];
+
+		// Use modulo to smoothly wrap the last particle back to the first one.
+		uint32_t nextParticle = perimeterIndices[(i + 1) % numParticles];
+
+		// A. The Rim: Connect neighbor to neighbor (Outer skin)
+		AddDistanceConstraint(currentParticle, nextParticle, rimLength, stiffness);
+
+		// B. The Spokes: Connect the perimeter particle to the center core
+		AddDistanceConstraint(centerIndex, currentParticle, radius, stiffness);
+	}
+
+	// ==========================================
+	// 5. THE MAGIC SAUCE: VOLUME / AREA PRESERVATION
+	// ==========================================
+	// Calculate the exact mathematical area of this regular polygon.
+	// Area of a regular polygon = n * 0.5 * r^2 * sin(2 * PI / n)
+	float restArea = numParticles * 0.5f * radius * radius * std::sin(angleStep);
+
+	// Apply the Area Constraint to the perimeter. 
+	// A pressure of 1.0f means it will try to perfectly maintain this calculated rest area.
+	AddAreaConstraint(perimeterIndices, restArea, 1.0f);
+}
