@@ -9,16 +9,56 @@
 #define DX(call) do { HRESULT _hr = (call); if (FAILED(_hr)) return _hr; } while(0)
 #endif
 
-/// <summary>
-/// Represents a 2D particle position which will be passed to the GPU as a vertex.
-/// </summary>
-struct ParticleVertex
+HRESULT ParticlePipeline::Render(Renderer& renderer, const std::vector<Particle2D>& particles, const std::vector<DistanceConstraint>& constraints)
 {
-	float x, y;
-};
+	// 0. Command List Setup
+	ID3D12GraphicsCommandList* cmd = renderer.GetCommandList();
 
-void ParticlePipeline::Render(Renderer& renderer, const std::vector<Particle2D>& particles, const std::vector<DistanceConstraint>& constraints)
-{
+	// 1. VERTEX BUFFER UPDATE: Map the VB and copy particle positions as vertices.
+	ParticleVertex* mappedVertices = nullptr;
+
+	D3D12_RANGE readRange = { 0, 0 }; // No reading from CPU
+	DX(m_vb->Map(0, &readRange, reinterpret_cast<void**>(&mappedVertices))); // Map the VB to CPU memory
+
+	// Copy particle positions to vertex buffer
+	for (size_t i = 0; i < particles.size(); ++i)
+	{
+		mappedVertices[i].x = particles[i].position[0];
+		mappedVertices[i].y = particles[i].position[1];
+	}
+
+	// Stop writing to the VB
+	m_vb->Unmap(0, nullptr);
+
+	// 2. INDEX BUFFER UPDATE: Map the IB and copy line indices based on distance constraints.
+	uint32_t* mappedIndices = nullptr;
+
+	DX(m_ib->Map(0, &readRange, reinterpret_cast<void**>(&mappedIndices))); // Map the IB to CPU memory
+
+	size_t indexCount = 0;
+	for (const auto& constraint : constraints)
+	{
+		if (indexCount + 2 > 20000) break; // Prevent buffer overflow, max 10000 lines = 20000 indices
+		mappedIndices[indexCount++] = constraint.p1;
+		mappedIndices[indexCount++] = constraint.p2;
+	}
+
+	// Stop writing to the IB
+	m_ib->Unmap(0, nullptr);
+
+	// 3. SETUP PIPELINE
+	cmd->SetGraphicsRootSignature(m_rootSignature.Get());
+	cmd->SetPipelineState(m_pso.Get());
+
+	// 4. SETUP PRIMITIVE TOPOLOGY, VERTEX BUFFER, INDEX BUFFER
+	cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+	cmd->IASetVertexBuffers(0, 1, &m_vbView);
+	cmd->IASetIndexBuffer(&m_ibView);
+
+	// 5. DRAW CALL
+	cmd->DrawIndexedInstanced(static_cast<UINT>(indexCount), 1, 0, 0, 0);
+
+	return S_OK;
 }
 
 void ParticlePipeline::Shutdown()
@@ -27,7 +67,12 @@ void ParticlePipeline::Shutdown()
 
 HRESULT ParticlePipeline::Initialize(Renderer& renderer)
 {
-	return E_NOTIMPL;
+	DX(CreateRootSignature_(renderer));
+	DX(CreatePSO_(renderer));
+	DX(CreateVertexBuffer_(renderer));
+	DX(CreateIndexBuffer_(renderer));
+
+	return S_OK;
 }
 
 /// <summary>

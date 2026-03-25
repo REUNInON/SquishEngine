@@ -6,12 +6,10 @@
 class ParticlePipeline
 {
 public:
-	ParticlePipeline();
-	~ParticlePipeline();
 
 	HRESULT Initialize(Renderer& renderer);
 
-	void Render(Renderer& renderer, const std::vector<Particle2D>& particles, const std::vector<DistanceConstraint>& constraints);
+	HRESULT Render(Renderer& renderer, const std::vector<Particle2D>& particles, const std::vector<DistanceConstraint>& constraints);
 
 	void Shutdown();
 
@@ -44,9 +42,7 @@ private:
 	// =============================
 	// SIMULATION MESH DATA STRUCTURES
 	// =============================
-	struct Vertex { float x, y; };
-
-
+	struct ParticleVertex { float x, y; };
 
 };
 

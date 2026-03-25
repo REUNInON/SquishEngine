@@ -1,4 +1,6 @@
 #include "Renderer.h"
+#include "PhysicsEngine.h"
+#include "ParticlePipeline.h"
 #include <windows.h>
 
 #include <fstream>
@@ -7,6 +9,9 @@
 
 // GLOBAL VARIABLES
 Renderer g_renderer;
+PhysicsEngine g_physics;
+ParticlePipeline g_pipeline;
+
 
 // Window Creation Helper
 HWND SetupWindow(HINSTANCE hInstance, int width, int height);
