@@ -2,6 +2,22 @@
 #include <cmath>
 
 // ===========================
+// Simulation Control
+// ===========================
+
+/// <summary>
+/// Main simulation step that advances the physics simulation by a specified time step (deltaTime).
+/// </summary>
+/// <param name="deltaTime">The time step (in seconds) over which to advance the simulation.</param>
+void PhysicsEngine::StepSimulation(float deltaTime)
+{
+	Integrate(deltaTime);
+	SolveConstraints();
+	HandleCollisions();
+	UpdateVelocities(deltaTime);
+}
+
+// ===========================
 // Particle Management
 // ===========================
 
@@ -78,22 +94,6 @@ void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndic
 		constraint.particleIndices[i] = particleIndices[i];
 	}
 	m_areaConstraints.push_back(constraint);
-}
-
-// ===========================
-// Simulation Control
-// ===========================
-
-/// <summary>
-/// Main simulation step that advances the physics simulation by a specified time step (deltaTime).
-/// </summary>
-/// <param name="deltaTime">The time step (in seconds) over which to advance the simulation.</param>
-void PhysicsEngine::StepSimulation(float deltaTime)
-{
-	Integrate(deltaTime);
-	HandleCollisions();
-	SolveConstraints();
-	UpdateVelocities(deltaTime);
 }
 
 // ===========================

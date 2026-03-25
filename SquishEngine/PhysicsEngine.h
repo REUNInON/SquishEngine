@@ -30,7 +30,7 @@ struct DistanceConstraint // 16-Byte Block
 	float stiffness; // How strongly the constraint is enforced (0: gel-like to 1: rigid)
 };
 
-constexpr uint32_t MAX_AREA_PARTICLES = 512;
+constexpr uint32_t MAX_AREA_PARTICLES = 32;
 struct AreaConstraint
 {
 	uint32_t particleIndices[MAX_AREA_PARTICLES]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
