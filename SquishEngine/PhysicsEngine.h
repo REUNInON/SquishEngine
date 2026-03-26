@@ -30,7 +30,7 @@ struct DistanceConstraint // 16-Byte Block
 	float stiffness; // How strongly the constraint is enforced (0: gel-like to 1: rigid)
 };
 
-constexpr uint32_t MAX_AREA_PARTICLES = 32;
+constexpr uint32_t MAX_AREA_PARTICLES = 2048;
 struct AreaConstraint
 {
 	uint32_t particleIndices[MAX_AREA_PARTICLES]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
@@ -77,6 +77,8 @@ public:
 	void CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness);
 
 	void CreateJellyBall(float centerX, float centerY, float radius, uint32_t numParticles, float particleMass, float stiffness);
+
+	void CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness);
 
 private:
 	uint32_t m_solverIterations = 8; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.

@@ -38,7 +38,7 @@ HRESULT ParticlePipeline::Render(Renderer& renderer, const std::vector<Particle2
 	size_t indexCount = 0;
 	for (const auto& constraint : constraints)
 	{
-		if (indexCount + 2 > 20000) break; // Prevent buffer overflow, max 10000 lines = 20000 indices
+		if (indexCount + 2 > MAX_INDICES) break; // Prevent buffer overflow
 		mappedIndices[indexCount++] = constraint.p1;
 		mappedIndices[indexCount++] = constraint.p2;
 	}

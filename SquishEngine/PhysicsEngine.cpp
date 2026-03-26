@@ -434,3 +434,90 @@ void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, 
 	// A pressure of 1.0f means it will try to perfectly maintain this calculated rest area.
 	AddAreaConstraint(perimeterIndices, restArea, 1.0f);
 }
+
+void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness)
+{
+	const int res = 32; // 32 x 32 grid = 1024 particles per drop, which is a good balance between detail and performance for a jiggle effect. Adjust as needed.
+	const float spacing = (radius * 2.0f) / static_cast<float>(res - 1);
+
+	auto buildDrop = [this, res, spacing, radius, particleMass, stiffness](float cx, float cy, float tiltDir) -> std::vector<std::vector<int>>
+		{
+			std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
+
+			// ==========================================
+			// 1. Create Circular Particle Arrangement (The Drop)
+			// ==========================================
+			for (int y = 0; y < res; ++y)
+			{
+				for (int x = 0; x < res; ++x)
+				{
+					float px = (cx - radius) + (x * spacing);
+					float py = (cy - radius) + (y * spacing);
+
+					float dx = px - cx;
+					float dy = py - cy;
+					if ((dx * dx + dy * dy) <= (radius * radius * 1.2f))
+					{
+						float mass = particleMass;
+
+						if (y >= res - 2 && x > 0 && x < res - 1)
+						{
+							mass = 0.0f;
+							py += radius * 0.6f;
+							px += tiltDir * radius * 0.2f;
+						}
+
+						grid[y][x] = AddParticle(px, py, mass);
+					}
+				}
+			}
+
+			// ==========================================
+			// 2. Connect the Springs (Distance Constraints)
+			// ==========================================
+			for (int y = 0; y < res; ++y)
+			{
+				for (int x = 0; x < res; ++x)
+				{
+					int p1 = grid[y][x];
+					if (p1 == -1) continue;
+
+					auto addSpring = [this, p1, stiffness](int p2) {
+						if (p2 == -1) return;
+						float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
+						float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
+						float dist = std::sqrt(dx * dx + dy * dy);
+						AddDistanceConstraint(p1, p2, dist, stiffness);
+						};
+
+					if (x < res - 1) addSpring(grid[y][x + 1]);
+					if (y < res - 1) addSpring(grid[y + 1][x]);
+
+					if (x < res - 1 && y < res - 1) addSpring(grid[y + 1][x + 1]);
+					if (x > 0 && y < res - 1)       addSpring(grid[y + 1][x - 1]);
+				}
+			}
+			return grid;
+		};
+
+	// ==========================================
+	// 3. Create Two Drops
+	// ==========================================
+	auto leftGrid = buildDrop(startX - radius * 0.95f, startY, 1.0f);
+	auto rightGrid = buildDrop(startX + radius * 0.95f, startY, -1.0f);
+
+	// ==========================================
+	// 4. Connect the Two Drops with a Soft Spring
+	// ==========================================
+	int leftInner = leftGrid[res / 2][res - 1] != -1 ? leftGrid[res / 2][res - 1] : leftGrid[res / 2][res - 2];
+	int rightInner = rightGrid[res / 2][0] != -1 ? rightGrid[res / 2][0] : rightGrid[res / 2][1];
+
+	if (leftInner != -1 && rightInner != -1)
+	{
+		float dx = m_particles[leftInner].position[0] - m_particles[rightInner].position[0];
+		float dy = m_particles[leftInner].position[1] - m_particles[rightInner].position[1];
+		float dist = std::sqrt(dx * dx + dy * dy);
+
+		AddDistanceConstraint(leftInner, rightInner, dist, stiffness * 0.3f);
+	}
+}
