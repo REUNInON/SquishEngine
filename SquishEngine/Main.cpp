@@ -58,7 +58,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
     //g_physics.CreateJellyBall(0, 5, 0.4f, 16, 1.0f, 0.005f);
 
-    g_physics.CreateRealisticJiggle(0.0f, -0.2f, 0.6f, 1.0f, 0.7f);
+    g_physics.CreateRealisticJiggle(0.0f, -0.4f, 0.4f, 0.01f, 0.1f);
 
     // 5. GAME LOOP
 

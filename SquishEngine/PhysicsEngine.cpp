@@ -437,15 +437,16 @@ void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, 
 
 void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness)
 {
-	const int res = 32; // 32 x 32 grid = 1024 particles per drop, which is a good balance between detail and performance for a jiggle effect. Adjust as needed.
+	const int res = 32; // 32 x 32 grid = 4096 particles per drop, which is a good balance between detail and performance for a jiggle effect. Adjust as needed.
 	const float spacing = (radius * 2.0f) / static_cast<float>(res - 1);
 
 	auto buildDrop = [this, res, spacing, radius, particleMass, stiffness](float cx, float cy, float tiltDir) -> std::vector<std::vector<int>>
 		{
+			// Fill the grid with -1 (empty)
 			std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
 
 			// ==========================================
-			// 1. Create Circular Particle Arrangement (The Drop)
+			// 1. CREATE LATTICE POINTS (THE BODY)
 			// ==========================================
 			for (int y = 0; y < res; ++y)
 			{
@@ -454,17 +455,19 @@ void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radi
 					float px = (cx - radius) + (x * spacing);
 					float py = (cy - radius) + (y * spacing);
 
+					// Circle Mask
 					float dx = px - cx;
 					float dy = py - cy;
 					if ((dx * dx + dy * dy) <= (radius * radius * 1.2f))
 					{
 						float mass = particleMass;
 
+						// Top Points (Anchors/Pins)
 						if (y >= res - 2 && x > 0 && x < res - 1)
 						{
-							mass = 0.0f;
-							py += radius * 0.6f;
-							px += tiltDir * radius * 0.2f;
+							mass = 0.0f; // Keeps it suspended in the air
+							py += radius * 0.6f; // Stretch upwards
+							px += tiltDir * radius * 0.2f; // Tilt inwards
 						}
 
 						grid[y][x] = AddParticle(px, py, mass);
@@ -473,7 +476,7 @@ void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radi
 			}
 
 			// ==========================================
-			// 2. Connect the Springs (Distance Constraints)
+			// 2. CONNECT INTERNAL SPRINGS (LATTICE)
 			// ==========================================
 			for (int y = 0; y < res; ++y)
 			{
@@ -490,13 +493,56 @@ void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radi
 						AddDistanceConstraint(p1, p2, dist, stiffness);
 						};
 
+					// Structural and Diagonal Springs
 					if (x < res - 1) addSpring(grid[y][x + 1]);
 					if (y < res - 1) addSpring(grid[y + 1][x]);
-
 					if (x < res - 1 && y < res - 1) addSpring(grid[y + 1][x + 1]);
 					if (x > 0 && y < res - 1)       addSpring(grid[y + 1][x - 1]);
 				}
 			}
+
+			// ==========================================
+			// 3. NEW: CELLULAR VOLUME CONSERVATION (ANTI-BUCKLING)
+			// ==========================================
+			for (int y = 0; y < res - 1; ++y)
+			{
+				for (int x = 0; x < res - 1; ++x)
+				{
+					int pBL = grid[y][x];         // Bottom-Left
+					int pBR = grid[y][x + 1];     // Bottom-Right
+					int pTR = grid[y + 1][x + 1]; // Top-Right
+					int pTL = grid[y + 1][x];     // Top-Left
+
+					// If all 4 corners are inside the circle mask (valid particles)
+					if (pBL != -1 && pBR != -1 && pTR != -1 && pTL != -1)
+					{
+						std::vector<uint32_t> cellParticles = {
+							static_cast<uint32_t>(pBL),
+							static_cast<uint32_t>(pBR),
+							static_cast<uint32_t>(pTR),
+							static_cast<uint32_t>(pTL)
+						};
+
+						// Due to top stretching, the area might not be a perfect square.
+						// Therefore, we measure the current actual area using the Shoelace formula.
+						float area = 0.0f;
+						for (int j = 0; j < 4; ++j)
+						{
+							const Particle2D& p1 = m_particles[cellParticles[j]];
+							const Particle2D& p2 = m_particles[cellParticles[(j + 1) % 4]];
+							area += (p1.position[0] * p2.position[1]) - (p2.position[0] * p1.position[1]);
+						}
+
+						// We use std::abs because the order of points (clockwise vs counter-clockwise) 
+						// might make the Shoelace area negative; we need the absolute magnitude.
+						float restArea = std::abs(area * 0.5f);
+
+						// Apply Area Constraint to this cell. Pressure 1.0f = Preserve volume at all costs!
+						AddAreaConstraint(cellParticles, restArea, 1.0f);
+					}
+				}
+			}
+
 			return grid;
 		};
 
