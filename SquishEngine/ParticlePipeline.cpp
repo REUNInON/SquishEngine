@@ -183,8 +183,6 @@ HRESULT ParticlePipeline::CreatePSO_(Renderer& renderer)
 HRESULT ParticlePipeline::CreateIndexBuffer_(Renderer& renderer)
 {
 	// BUFFER SIZEE: 10000 particles, each with 2 vertices (line list)
-	const UINT MAX_LINES = 20000;
-	const UINT MAX_INDICES = MAX_LINES * 2; // 2 indices per line
 	const UINT64 ibSize = MAX_INDICES * sizeof(uint32_t);
 
 	// BUFFER DESCRIPTION: TYPE - UPLOAD
@@ -218,7 +216,6 @@ HRESULT ParticlePipeline::CreateIndexBuffer_(Renderer& renderer)
 HRESULT ParticlePipeline::CreateVertexBuffer_(Renderer& renderer)
 {
 	// BUFFER SIZE: 10000 particles, each with 2 floats (x, y)
-	const UINT MAX_PARTICLES = 10000;
 	const UINT64 vbSize = MAX_PARTICLES * sizeof(ParticleVertex);
 
 	// BUFFER DESCRIPTION: TYPE - UPLOAD

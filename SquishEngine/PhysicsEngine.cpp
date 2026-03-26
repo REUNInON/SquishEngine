@@ -146,22 +146,26 @@ void PhysicsEngine::Integrate(float deltaTime)
 
 void PhysicsEngine::HandleCollisions()
 {
-	// Floor of the simulation world at y = -0.5. Make it adjustable in the future for different environments.
 	const float floorY = -1.0f;
+	const float friction = 0.5f; // Friction: 1.0 means no slip, 0.0 means full slip.
 
 	for (auto& p : m_particles)
 	{
-		// Check for collision with the floor
 		if (p.position[1] < floorY)
 		{
-			// 1. Hard collision response: Move the particle back to the floor
-			p.position[1] = floorY; // Particle is teleported to the floor
+			// 1. Move the particle back to the floor level.
+			p.position[1] = floorY;
 
-			// 2. Stop the partice
-			p.velocity[1] = 0.0f; // Stop vertical movement
+			// 2. Stop vertical movement (prevent bouncing)
+			// Since velocity is calculated as (pos - prevPos), we set prevPosition to the current position to zero out the vertical velocity.
+			p.prevPosition[1] = floorY;
 
-			// 3. Friction: Halve the horizontal velocity to simulate friction with the floor
-			p.velocity[0] *= 0.5f; // Reduce horizontal velocity
+			// 3. Horizontal PBD friction (momentum stealing). Find how much horizontal movement we had in this frame (deltaX).
+			float deltaX = p.position[0] - p.prevPosition[0];
+
+			// Move the previous position towards the current position by a fraction determined by the friction.
+			// This reduces the horizontal velocity when calculating the new velocity in UpdateVelocities.
+			p.prevPosition[0] = p.position[0] - (deltaX * (1.0f - friction));
 		}
 	}
 }

@@ -95,7 +95,7 @@ private:
 	HWND m_hWnd = nullptr;
 
 	UINT m_width{ 800 };
-	UINT m_height{ 600 };
+	UINT m_height{ 800 };
 
 	// DirectX 12 Core Components (DXGI/D3D12)
 

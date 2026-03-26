@@ -13,6 +13,13 @@ public:
 
 	void Shutdown();
 
+	// ============================
+	// PIPELINE LIMITS
+	// ============================
+	static constexpr UINT MAX_PARTICLES = 10000;
+	static constexpr UINT MAX_LINES = 20000;
+	static constexpr UINT MAX_INDICES = MAX_LINES * 2;
+
 
 private:
 

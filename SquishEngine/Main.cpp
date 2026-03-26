@@ -32,8 +32,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     FILE* stream; freopen_s(&stream, "CONOUT$", "w", stdout);
 
     // 1. OPEN WINDOW
-    const UINT WIDTH = 1280;
-    const UINT HEIGHT = 720;
+    const UINT WIDTH = 750;
+    const UINT HEIGHT = 750;
     HWND hWnd = SetupWindow(hInstance, WIDTH, HEIGHT);
 
     if (!hWnd) return -1;
@@ -54,9 +54,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return -1;
 	}
 
-    //g_physics.CreateJellyBox(0.0f, 1.0f, 0.4f, 0.001f, 0.01f); // Example Jelly Box
+    g_physics.CreateJellyBox(0.0f, 1.0f, 0.4f, 1.0f, 0.014f); // Example Jelly Box
 
-    g_physics.CreateJellyBall(0, 5, 0.4f, 16, 1.0f, 0.002f);
+    g_physics.CreateJellyBall(0, 5, 0.4f, 16, 1.0f, 0.005f);
 
     // 5. GAME LOOP
 
