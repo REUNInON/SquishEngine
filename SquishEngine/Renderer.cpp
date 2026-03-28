@@ -475,7 +475,7 @@ void Renderer::EndFrame()
 	m_cmdQueue->ExecuteCommandLists(1, cmdLists);
 
 	// Present the frame
-	m_swapChain->Present(0, 0); // VSync disabled (0), Allow tearing
+	m_swapChain->Present(1, 0); // VSync enabled (1), Allow tearing
 
 	++m_globalFenceCount; // Global sayacı artır (örn: 5 idi, 6 oldu)
 	m_cmdQueue->Signal(m_fence.Get(), m_globalFenceCount); // GPU'ya "işin bitince Fence'i 6 yap" de.

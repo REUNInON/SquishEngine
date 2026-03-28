@@ -54,11 +54,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return -1;
 	}
 
-    //g_physics.CreateJellyBox(0.0f, 1.0f, 0.4f, 1.0f, 0.014f); // Example Jelly Box
+    g_physics.CreateJellyBox(0.0f, 1.0f, 0.4f, 1.0f, 0.014f); // Example Jelly Box
 
-    //g_physics.CreateJellyBall(0, 5, 0.4f, 16, 1.0f, 0.005f);
+    //g_physics.CreateJellyBall(0, 5, 0.4f, 16, 1.0f, 0.02f);
 
-    g_physics.CreateRealisticJiggle(0.0f, -0.4f, 0.4f, 0.01f, 0.1f);
+    //g_physics.CreateRealisticJiggle(0.0f, -0.4f, 0.4f, 0.01f, 0.1f);
 
     // 5. GAME LOOP
 
