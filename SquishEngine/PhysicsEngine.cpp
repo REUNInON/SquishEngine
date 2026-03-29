@@ -13,7 +13,6 @@ void PhysicsEngine::StepSimulation(float deltaTime)
 {
 	Integrate(deltaTime);
 	SolveConstraints();
-	HandleCollisions();
 	UpdateVelocities(deltaTime);
 }
 
@@ -143,7 +142,10 @@ void PhysicsEngine::Integrate(float deltaTime)
 		p.force[1] = 0.0f;
 	}
 }
-
+/// <summary>
+/// Collision Handling with The Floor.
+/// OBSOLETE METHOD - NOT USED IN CURRENT SIMULATION
+/// </summary>
 void PhysicsEngine::HandleCollisions()
 {
 	const float floorY = -1.0f;
@@ -179,6 +181,9 @@ void PhysicsEngine::HandleCollisions()
 /// </summary>
 void PhysicsEngine::SolveConstraints()
 {
+	const float floorY = -1.0f;
+	const float friction = 0.5f; // Friction: 1.0 means no slip, 0.0 means full slip.
+
 	// =============================
 	// 0. MAIN SOLVER LOOP
 	// =============================
@@ -305,6 +310,24 @@ void PhysicsEngine::SolveConstraints()
 			
 		}
 
+		// =============================
+		// 3. SOLVE GROUND COLLISION
+		// =============================
+		for (auto& p : m_particles)
+		{
+			if (p.inverseMass <= 0.0f) continue; // Skip rigid particles
+
+			// If the particle is below the floor level, move it back up to the floor level.
+			if (p.position[1] < floorY)
+			{
+				p.position[1] = floorY;
+
+				// ADD FRICTION: DELETE IF BAD!!
+				float deltaX = p.position[0] - p.prevPosition[0];
+				p.prevPosition[0] = p.position[0] - (deltaX * (1.0f - friction));
+			}
+		}
+
 	}
 }
 
@@ -424,7 +447,7 @@ void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, 
 	}
 
 	// ==========================================
-	// 5. THE MAGIC SAUCE: VOLUME / AREA PRESERVATION
+	// 5. VOLUME / AREA PRESERVATION
 	// ==========================================
 	// Calculate the exact mathematical area of this regular polygon.
 	// Area of a regular polygon = n * 0.5 * r^2 * sin(2 * PI / n)
@@ -437,7 +460,7 @@ void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, 
 
 void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness)
 {
-	const int res = 32; // 32 x 32 grid = 4096 particles per drop, which is a good balance between detail and performance for a jiggle effect. Adjust as needed.
+	const int res = 52; // 52 x 52 grid = 2704 particles per drop, which is a good balance between detail and performance for a jiggle effect. Adjust as needed.
 	const float spacing = (radius * 2.0f) / static_cast<float>(res - 1);
 
 	auto buildDrop = [this, res, spacing, radius, particleMass, stiffness](float cx, float cy, float tiltDir) -> std::vector<std::vector<int>>
@@ -466,8 +489,8 @@ void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radi
 						if (y >= res - 2 && x > 0 && x < res - 1)
 						{
 							mass = 0.0f; // Keeps it suspended in the air
-							py += radius * 0.6f; // Stretch upwards
-							px += tiltDir * radius * 0.2f; // Tilt inwards
+							py += radius * 0.1f; // Stretch upwards
+							px += tiltDir * radius * 0.25f; // Tilt inwards
 						}
 
 						grid[y][x] = AddParticle(px, py, mass);
@@ -549,8 +572,8 @@ void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radi
 	// ==========================================
 	// 3. Create Two Drops
 	// ==========================================
-	auto leftGrid = buildDrop(startX - radius * 0.95f, startY, 1.0f);
-	auto rightGrid = buildDrop(startX + radius * 0.95f, startY, -1.0f);
+	auto leftGrid = buildDrop(startX - radius * 0.9f, startY, 1.0f);
+	auto rightGrid = buildDrop(startX + radius * 0.9f, startY, -1.0f);
 
 	// ==========================================
 	// 4. Connect the Two Drops with a Soft Spring

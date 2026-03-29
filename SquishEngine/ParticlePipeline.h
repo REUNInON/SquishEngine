@@ -31,9 +31,9 @@ private:
 	ComPtr<ID3D12PipelineState> m_pso;
 
 	ComPtr<ID3D12Resource> m_vb;
-	D3D12_VERTEX_BUFFER_VIEW m_vbView;
+	D3D12_VERTEX_BUFFER_VIEW m_vbView{};
 	ComPtr<ID3D12Resource> m_ib;
-	D3D12_INDEX_BUFFER_VIEW m_ibView;
+	D3D12_INDEX_BUFFER_VIEW m_ibView{};
 
 
 	// =============================

@@ -453,7 +453,7 @@ void Renderer::BeginFrame()
 
 	// Clear Render Target and Depth Stencil
 	// TODO: Make clear color configurable
-	const FLOAT clearColor[4] = { 1.0f, 0.9f, 0.9f, 1.0f }; // Clear color (dark red)
+	const FLOAT clearColor[4] = { 0.0f, 0.01f, 0.05f, 1.0f }; // Clear color (black)
 	m_cmdList->ClearRenderTargetView(currenRTV, clearColor, 0, nullptr); // Clear RTV
 	m_cmdList->ClearDepthStencilView(m_dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr); // Clear DSV
 }

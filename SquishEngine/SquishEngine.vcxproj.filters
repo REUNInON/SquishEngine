@@ -27,6 +27,9 @@
     <ClInclude Include="ParticlePipeline.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SpatialHash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Renderer.cpp">
@@ -39,6 +42,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ParticlePipeline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SpatialHash.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
