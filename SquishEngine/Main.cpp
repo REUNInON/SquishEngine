@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <chrono>
+
 // GLOBAL VARIABLES
 Renderer g_renderer;
 PhysicsEngine g_physics;
@@ -51,17 +53,21 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return -1;
 	}
 
-    //g_physics.CreateJellyBox(-0.3f, -0.8f, 0.5f, 1.0f, 0.5f); // Example Jelly Box
+    g_physics.CreateJellyBox(0.1f, -0.8f, 0.5f, 1.0f, 0.5f); // Example Jelly Box
 
-    //g_physics.CreateRealisticJiggle(0.0f, -0.5f, 0.4f, 1.0f, 0.25f);
+    g_physics.CreateRealisticJiggle(0.0f, 0.5f, 0.45f, 1.0f, 0.0025f);
 
-    g_physics.CreateSoftBall(0.1f, -0.6f, 0.25f, 1.0f, 0.25f);
+    //.CreateSoftBall(0.1f, -0.6f, 0.25f, 1.0f, 0.25f);
 
-    g_physics.CreateSoftBall(0.0f, 0.0f, 0.2f, 1.0f, 0.8f);
+    //g_physics.CreateSoftBall(0.0f, 0.0f, 0.2f, 1.0f, 0.8f);
  
     // 5. GAME LOOP
 
     MSG msg = {};
+
+	auto prevTime = std::chrono::high_resolution_clock::now();
+	float accumulator = 0.0f;
+
     while (msg.message != WM_QUIT)
     {
         if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -71,10 +77,25 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         }
         else
         {
+            // ===========================================================================
+			// FIXED TIMESTEP SIMULATION
+            // ===========================================================================
+			auto currentTime = std::chrono::high_resolution_clock::now();
+			float frameTime = std::chrono::duration<float>(currentTime - prevTime).count();
+			prevTime = currentTime; if (frameTime > 0.25f) frameTime = 0.25f; // Avoid deadly long frames
+
+			accumulator += frameTime;
+
 			// ===========================================================================
 			// SIMULATION STEP
 			// ============================================================================
-			g_physics.StepSimulation(0.016f); // Simulate at 60 FPS, fixed time step 0.016 seconds (16 ms)
+			const float fixedDeltaTime = 0.016f; // 60 FPS
+
+            while (accumulator >= fixedDeltaTime)
+            {
+                g_physics.StepSimulation(fixedDeltaTime); // Simulate at 60 FPS, fixed time step 0.016 seconds (16 ms)
+                accumulator -= fixedDeltaTime;
+            }
 
             // ===========================================================================
             // RENDERING CODE

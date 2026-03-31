@@ -755,122 +755,57 @@ void PhysicsEngine::CreateArmoredSoftBall(float centerX, float centerY, float ra
 
 void PhysicsEngine::CreateRealisticJiggle(float centerX, float centerY, float radius, float particleMass, float stiffness)
 {
-	m_currentBodyId++; // Kendi kendini patlatmasını engeller
+	m_currentBodyId++;
+
+	const int outerCount = 40; // Çok kalabalık yapmıyoruz ki esnekliği pürüzsüz olsun.
+	std::vector<uint32_t> boundIds;
+	boundIds.reserve(outerCount);
+
 	const float PI = 3.14159265f;
 
 	// ==========================================
-	// 1. KADEME: DIŞ DERİ (GERÇEK KÜTLE - FİZİĞİ BU YÖNETİR)
+	// 1. DERİYİ DİZ VE TAVANA ÇİVİLE
 	// ==========================================
-	int boundCount = 80;
-	std::vector<uint32_t> boundIds;
-	boundIds.reserve(boundCount);
-
-	for (int i = 0; i < boundCount; ++i)
+	for (int i = 0; i < outerCount; ++i)
 	{
-		float angle = (2.0f * PI * i) / boundCount;
+		float angle = (2.0f * PI * i) / outerCount;
 		float px = centerX + std::cos(angle) * radius;
 		float py = centerY + std::sin(angle) * radius;
 
-		// TAVANA ÇİVİLEME
+		// En üstteki %15'lik kısmı duvara çivile (Kütlesini 0 yapıyoruz)
 		float mass = (py > centerY + (radius * 0.85f)) ? 0.0f : particleMass;
 		boundIds.push_back(AddParticle(px, py, mass));
 	}
 
 	// ==========================================
-	// 2. KADEME: İÇ İSKELET (KÖLE KÜTLE - 0.001f)
+	// 2. YAYLARI BAĞLA (İçi Boş Balon Taktikleri)
 	// ==========================================
-	int res = 26;
-	float spacing = (radius * 2.0f) / (float)(res - 1);
-	std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
-
-	// İŞTE BÜYÜ BURADA: İçerisi dışarının 1000'de 1'i ağırlığında!
-	// Yerçekimi bunu asıp sündüremez, bağırsak gibi sarkması imkansızlaşır.
-	float slaveMass = particleMass * 0.001f;
-
-	for (int y = 0; y < res; ++y)
-	{
-		for (int x = 0; x < res; ++x)
-		{
-			float px = (centerX - radius) + x * spacing;
-			float py = (centerY - radius) + y * spacing;
-			float dx = px - centerX;
-			float dy = py - centerY;
-
-			// Deriye çok yakınlaşmasın (iç içe girmesin)
-			if (dx * dx + dy * dy < (radius - spacing * 1.2f) * (radius - spacing * 1.2f))
-			{
-				float mass = (py > centerY + (radius * 0.85f)) ? 0.0f : slaveMass;
-				grid[y][x] = AddParticle(px, py, mass);
-			}
-		}
-	}
-
-	// ==========================================
-	// 3. KADEME: YAYLARI BAĞLAMA
-	// ==========================================
-	auto connectSpring = [&](int p1, int p2, float customStiffness) {
-		if (p1 == -1 || p2 == -1) return;
+	auto connectSpring = [&](uint32_t p1, uint32_t p2, float customStiffness) {
 		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
 		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
 		float dist = std::sqrt(dx * dx + dy * dy);
 		AddDistanceConstraint(p1, p2, dist, customStiffness);
 		};
 
-	// A. İç iskeleti kendi içinde bağla
-	for (int y = 0; y < res; ++y)
+	for (int i = 0; i < outerCount; ++i)
 	{
-		for (int x = 0; x < res; ++x)
-		{
-			int p = grid[y][x];
-			if (p == -1) continue;
-			if (x < res - 1) connectSpring(p, grid[y][x + 1], stiffness);
-			if (y < res - 1) connectSpring(p, grid[y + 1][x], stiffness);
-			if (x < res - 1 && y < res - 1) connectSpring(p, grid[y + 1][x + 1], stiffness);
-			if (x > 0 && y < res - 1)       connectSpring(p, grid[y + 1][x - 1], stiffness);
-		}
-	}
+		// A. YAPISAL YAY (Structural): Deri kopmasın diye KATI (1.0f).
+		// (Bisiklet zinciri mantığı: Uzamaz ama mükemmel katlanır!)
+		connectSpring(boundIds[i], boundIds[(i + 1) % outerCount], stiffness);
 
-	// B. Dış deriyi iskelete ZIMBALA (Çift Dikiş)
-	for (int i = 0; i < boundCount; ++i)
-	{
-		// Dış deri kendi içinde esnek (Balon gibi şişebilmesi için)
-		connectSpring(boundIds[i], boundIds[(i + 1) % boundCount], stiffness * 0.2f);
-		connectSpring(boundIds[i], boundIds[(i + 2) % boundCount], stiffness * 0.2f);
+		// B. BÜKÜLME YAYI (Bending): İşte lömbürdeyen sümük/meme efekti BURADA!
+		// Senin parametreden gelen o düşük stiffness'ı buraya veriyoruz.
+		connectSpring(boundIds[i], boundIds[(i + 2) % outerCount], stiffness);
 
-		int best1 = -1, best2 = -1;
-		float minDist1 = 99999.0f, minDist2 = 99999.0f;
-
-		for (int gy = 0; gy < res; ++gy)
-		{
-			for (int gx = 0; gx < res; ++gx)
-			{
-				int gp = grid[gy][gx];
-				if (gp != -1)
-				{
-					float dx = m_particles[boundIds[i]].position[0] - m_particles[gp].position[0];
-					float dy = m_particles[boundIds[i]].position[1] - m_particles[gp].position[1];
-					float dSq = dx * dx + dy * dy;
-					if (dSq < minDist1) {
-						minDist2 = minDist1; best2 = best1;
-						minDist1 = dSq; best1 = gp;
-					}
-					else if (dSq < minDist2) {
-						minDist2 = dSq; best2 = gp;
-					}
-				}
-			}
-		}
-
-		// Dış deriyi köle iskelete çelik gibi bağlıyoruz (1.0f). 
-		// İskelet çok hafif olduğu için artık deriye İTAAT edecek!
-		if (best1 != -1) connectSpring(boundIds[i], best1, 1.0f);
-		if (best2 != -1) connectSpring(boundIds[i], best2, 1.0f);
+		// Kendi üstüne çökmesin diye ekstra bir destek kıkırdağı
+		connectSpring(boundIds[i], boundIds[(i + 3) % outerCount], stiffness * 0.5f);
 	}
 
 	// ==========================================
-	// 4. KADEME: TEK VE KUSURSUZ ALAN KORUMASI
+	// 3. HACİM KORUMASI (İç basınca direnen su)
 	// ==========================================
-	// O saçma sapan 1000 üçgenlik constraint'leri kaldırdık. Bütün işi ana kabuk yapacak!
 	float restArea = PI * radius * radius;
+
+	// Pressure 1.0f: Şekil ezildikçe hacmi korumak için sağdan soldan şişecek!
 	AddAreaConstraint(boundIds, restArea, 1.0f);
 }

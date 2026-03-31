@@ -58,7 +58,7 @@ public:
 	// Particle Management
 	// ===========================
 
-	static constexpr float GLOBAL_PARTICLE_RADIUS = 0.023f; // 0.0108
+	static constexpr float GLOBAL_PARTICLE_RADIUS = 0.0275f; // 0.0108
 	static constexpr float GLOBAL_GRID_SPACING = GLOBAL_PARTICLE_RADIUS * 2.0f;
 
 	// Adds a new particle to the simulation with the specified position and mass, returning its index.
@@ -83,6 +83,9 @@ public:
 	const std::vector<Particle2D>& GetParticles() const { return m_particles; }
 	const std::vector<DistanceConstraint>& GetDistanceConstraints() const { return m_distanceConstraints; }
 
+#pragma region Procedural Mesh Generation
+
+
 	void CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness);
 
 	void CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness);
@@ -90,6 +93,8 @@ public:
 	void CreateSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness);
 
 	void CreateArmoredSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness);
+
+#pragma endregion
 
 private:
 	uint32_t m_currentBodyId = 0;
