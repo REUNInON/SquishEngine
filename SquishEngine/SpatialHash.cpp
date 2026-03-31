@@ -21,22 +21,6 @@ SpatialHash::SpatialHash(float spacing, uint32_t maxParticles)
 }
 
 /// <summary>
-/// Converts 2D coordinates (xi, yi) to a hash index for the spatial grid.
-/// </summary>
-/// <param name="xi">The x-coordinate in the grid.</param>
-/// <param name="yi">The y-coordinate in the grid.</param>
-/// <param name="tableSize">The size of the hash table.</param>
-/// <returns>The hash index corresponding to the given coordinates.</returns>
-inline uint32_t HashCoordinates(int xi, int yi, uint32_t tableSize)
-{
-	// XOR With Large Primes to Mix Bits
-	uint32_t h = (xi * 92837111) ^ (yi * 689287499);
-
-	// Modulo to Fit Into Table Size
-	return h % tableSize; // TODO: Use bitwise AND if tableSize is a power of 2 for better performance
-}
-
-/// <summary>
 /// Uses "Counting Sort" to organize particles into the spatial hash grid.
 /// </summary>
 /// <param name="particles">The list of particles to be hashed.</param>

@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 #include <cstdint>
+#include <cmath>
+#include <memory>
 
 /// <summary>
 /// Represents a 2D particle with physical properties for simulation.
@@ -15,7 +17,13 @@ struct Particle2D
 	float force[2]; // 2 Dimensions (fx, fy), Force applied to the particle
 	float mass; // Weight of the particle
 	float inverseMass; // 1 / mass, Used for calculations to avoid division
+
+	uint32_t bodyId; // Groups particles into bodies for collision management.
+
+	// TODO: Carry particle radius here later. But it will add 4 bytes to the struct!! Currently a global constant is used.
 };
+
+class SpatialHash; // Forward declaration of SpatialHash for use in PhysicsEngine
 
 /// <summary>
 /// Defines a constraint that maintains a fixed distance between two particles, simulating a spring-like connection.
@@ -44,9 +52,16 @@ class PhysicsEngine
 {
 public:
 
+	PhysicsEngine();
+	~PhysicsEngine();
+
 	// ===========================
 	// Particle Management
 	// ===========================
+
+
+	static constexpr float GLOBAL_PARTICLE_RADIUS = 0.023f; // 0.0108
+	static constexpr float GLOBAL_GRID_SPACING = GLOBAL_PARTICLE_RADIUS * 2.0f;
 
 	// Adds a new particle to the simulation with the specified position and mass, returning its index.
 	uint32_t AddParticle(float x, float y, float mass);
@@ -72,12 +87,16 @@ public:
 
 	void CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness);
 
-	void CreateJellyBall(float centerX, float centerY, float radius, uint32_t numParticles, float particleMass, float stiffness);
-
 	void CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness);
 
+	void CreateSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness);
+
+	void CreateArmoredSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness);
+
 private:
-	uint32_t m_solverIterations = 8; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
+	uint32_t m_currentBodyId = 0;
+
+	uint32_t m_solverIterations = 20; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
 	// ===========================
 	// Internal Simulation Steps
 	// ===========================
@@ -94,5 +113,6 @@ private:
 	std::vector<DistanceConstraint> m_distanceConstraints; // Stores all distance constraints between particles
 	std::vector<AreaConstraint> m_areaConstraints; // Stores all area constraints for groups of particles
 
+	std::unique_ptr<SpatialHash> m_spatialHash; // Spatial Hash For Collision Detection
 };
 

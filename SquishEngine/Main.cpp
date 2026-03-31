@@ -51,12 +51,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return -1;
 	}
 
-    //g_physics.CreateJellyBox(-0.3f, 1.0f, 0.6f, 1.0f, 0.0075f); // Example Jelly Box
+    //g_physics.CreateJellyBox(-0.3f, -0.8f, 0.5f, 1.0f, 0.5f); // Example Jelly Box
 
-    //g_physics.CreateJellyBall(0, 5, 0.4f, 16, 1.0f, 0.08f);
+    //g_physics.CreateRealisticJiggle(0.0f, -0.5f, 0.4f, 1.0f, 0.25f);
 
-    g_physics.CreateRealisticJiggle(0.0f, 0.5f, 0.25f, 1.0f, 0.2f);
+    g_physics.CreateSoftBall(0.1f, -0.6f, 0.25f, 1.0f, 0.25f);
 
+    g_physics.CreateSoftBall(0.0f, 0.0f, 0.2f, 1.0f, 0.8f);
+ 
     // 5. GAME LOOP
 
     MSG msg = {};
@@ -72,7 +74,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 			// ===========================================================================
 			// SIMULATION STEP
 			// ============================================================================
-			g_physics.StepSimulation(0.016f); // Simulate at 60 FPS, fixed time step
+			g_physics.StepSimulation(0.016f); // Simulate at 60 FPS, fixed time step 0.016 seconds (16 ms)
 
             // ===========================================================================
             // RENDERING CODE

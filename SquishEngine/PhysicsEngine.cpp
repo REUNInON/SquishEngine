@@ -1,5 +1,17 @@
 #include "PhysicsEngine.h"
-#include <cmath>
+#include "SpatialHash.h"
+
+// ===========================
+// Constructor
+// ===========================
+PhysicsEngine::PhysicsEngine()
+{	
+	uint32_t maxParticles = 10000; // Maximum particle count in simulation.
+
+	m_spatialHash = std::make_unique<SpatialHash>(PhysicsEngine::GLOBAL_GRID_SPACING, maxParticles);
+}
+
+PhysicsEngine::~PhysicsEngine() = default;
 
 // ===========================
 // Simulation Control
@@ -12,6 +24,12 @@
 void PhysicsEngine::StepSimulation(float deltaTime)
 {
 	Integrate(deltaTime);
+
+	if (m_spatialHash && !m_particles.empty())
+	{
+		m_spatialHash->BuildGrid(m_particles);
+	}
+
 	SolveConstraints();
 	UpdateVelocities(deltaTime);
 }
@@ -44,6 +62,8 @@ uint32_t PhysicsEngine::AddParticle(float x, float y, float mass)
 	// 4. Set mass
 	p.mass = mass;
 	p.inverseMass = (mass > 0.0f) * (1.0f / (mass + (mass <= 0.0f))); // mass <= 0 Case Handled: 0 * (1 / (mass + 1))
+
+	p.bodyId = m_currentBodyId;
 	
 	// 5. Add to particle list and return index
 	m_particles.push_back(p);
@@ -181,7 +201,7 @@ void PhysicsEngine::HandleCollisions()
 /// </summary>
 void PhysicsEngine::SolveConstraints()
 {
-	const float floorY = -1.0f;
+	const float floorY = -0.99f;
 	const float friction = 0.5f; // Friction: 1.0 means no slip, 0.0 means full slip.
 
 	// =============================
@@ -253,6 +273,7 @@ void PhysicsEngine::SolveConstraints()
 
 			// 2.2. Calculate how much the current area deviates from the rest area.
 			float targetArea = constraint.restArea * constraint.pressure; // (Pressure 1 = Normal Volume, 1.2 = Inflated, 0.8 Deflated)
+			//if (currentArea < 0.0f) targetArea = -targetArea; // Handle negative area.
 			float error = currentArea - targetArea;
 			// if (std::abs(error) < 0.0001f) continue;
 
@@ -310,8 +331,98 @@ void PhysicsEngine::SolveConstraints()
 			
 		}
 
+		// ======================================
+		// 3. SOLVE PARTICLE-PARTICLE COLLISIONS
+		// ======================================
+		if (m_spatialHash)
+		{
+			float minDistance = PhysicsEngine::GLOBAL_PARTICLE_RADIUS * 2.0f; // Minimum distance to avoid overlap (2 * radius)
+			float minDistanceSq = minDistance * minDistance; // Squared minimum distance for optimization
+
+			for (uint32_t i = 0; i < m_particles.size(); ++i)
+			{
+				Particle2D& p1 = m_particles[i];
+
+				if (p1.inverseMass <= 0.0f) continue; // Skip immovable particles
+
+				int xi = static_cast<int>(std::floor(p1.position[0] / PhysicsEngine::GLOBAL_GRID_SPACING));
+				int yi = static_cast<int>(std::floor(p1.position[1] / PhysicsEngine::GLOBAL_GRID_SPACING));
+
+				// 3 x 3 Neighborhood Search
+				for (int dy = -1; dy <= 1; ++dy)
+				{
+					for (int dx = -1; dx <= 1; ++dx)
+					{
+						// Komşu hücrenin ID'sini bul
+						uint32_t hash = HashCoordinates(xi + dx, yi + dy, m_spatialHash->m_tableSize);
+
+						// O hücredeki parçacık listesinin başlangıç ve bitiş indekslerini çek
+						uint32_t startIdx = m_spatialHash->m_cellStart[hash];
+						uint32_t nextHash = hash + 1;
+						uint32_t endIdx = (nextHash < m_spatialHash->m_cellStart.size()) 
+										? m_spatialHash->m_cellStart[nextHash] 
+										: static_cast<uint32_t>(m_particles.size());
+
+						// Old version: Bad because it can cause out-of-bounds access when hash is the last index of m_cellStart
+						// uint32_t endIdx = m_spatialHash->m_cellStart[hash + 1];
+
+						// 3.3 Narrow Phase: Sadece o hücredeki komşularla tek tek mesafe ölç
+						for (uint32_t k = startIdx; k < endIdx; ++k)
+						{
+							uint32_t neighborIdx = m_spatialHash->m_sortedParticleIDs[k];
+
+							// ÇİFT KONTROLÜ ÖNLEME (Çok Kritik!): 
+							// Kendi kendisiyle çarpışmasını engeller. 
+							// Ayrıca 5. parçacık 8. ile çarpıştıysa, 8. parçacığa gelindiğinde tekrar 5'e bakmasını engeller. (Performansı 2'ye katlar)
+							if (neighborIdx <= i) continue;
+
+							Particle2D& p2 = m_particles[neighborIdx];
+
+							// Skip if same body.
+							if (p1.bodyId == p2.bodyId) continue;
+
+							// X ve Y eksenindeki fark (Vektör)
+							float diffX = p1.position[0] - p2.position[0];
+							float diffY = p1.position[1] - p2.position[1];
+
+							// Pisagor (c^2 = a^2 + b^2) - Uzaklığın karesi
+							float distSq = diffX * diffX + diffY * diffY;
+
+							// Eğer uzaklığın karesi, minimum mesafenin karesinden küçükse ÇARPIŞMA VARDIR!
+							// (0.00001f kontrolü, iki parçacık tam üst üste binerse sıfıra bölme hatasını engeller)
+							if (distSq < minDistanceSq && distSq > 0.00001f)
+							{
+								// Sadece çarpışma varsa o pahalı karekök (sqrt) işlemini yap
+								float dist = std::sqrt(distSq);
+
+								// Ne kadar iç içe geçmişler? (Penetration)
+								float penetration = minDistance - dist;
+
+								// İtme yönünü bul (Normal Vektörü) - diff vektörünü normalize ediyoruz
+								float normalX = diffX / dist;
+								float normalY = diffY / dist;
+
+								// Toplam ağırlığa (inverse mass) göre kimi ne kadar iteceğimizi hesapla
+								float totalInvMass = p1.inverseMass + p2.inverseMass;
+								float correctionAmount = penetration / totalInvMass;
+
+								// VE SQUISH! İki parçacığı zıt yönlere doğru fırlat.
+								// PBD kuralı: p1'i diff yönünde itersek, p2'yi tam tersi yönde iteriz.
+								p1.position[0] += normalX * correctionAmount * p1.inverseMass;
+								p1.position[1] += normalY * correctionAmount * p1.inverseMass;
+
+								p2.position[0] -= normalX * correctionAmount * p2.inverseMass;
+								p2.position[1] -= normalY * correctionAmount * p2.inverseMass;
+							}
+						}
+					}
+				}
+			}
+		
+		}
+
 		// =============================
-		// 3. SOLVE GROUND COLLISION
+		// 4. SOLVE GROUND COLLISION
 		// =============================
 		for (auto& p : m_particles)
 		{
@@ -351,242 +462,439 @@ void PhysicsEngine::UpdateVelocities(float deltaTime)
 
 }
 
-void PhysicsEngine::CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness)
+void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, float particleMass, float stiffness)
 {
-	// 4 CORNERS OF THE BOX
-	uint32_t p0 = AddParticle(startX, startY, particleMass);               // Bottom Left
-	uint32_t p1 = AddParticle(startX + size, startY, particleMass);        // Bottom Right
-	uint32_t p2 = AddParticle(startX + size, startY + size, particleMass); // Top Right
-	uint32_t p3 = AddParticle(startX, startY + size, particleMass);        // Top Left
+	m_currentBodyId++; // Kendi kendini patlatmasını engeller
 
-	// 4 SIDES OF THE BOX
-	AddDistanceConstraint(p0, p1, size, stiffness); // Bottom
-	AddDistanceConstraint(p1, p2, size, stiffness); // Right
-	AddDistanceConstraint(p2, p3, size, stiffness); // Top
-	AddDistanceConstraint(p3, p0, size, stiffness); // Left
+	int res = 16; // 16x16 ızgara (Çeperde 60 yüksek çözünürlüklü nokta eder)
+	float spacing = size / static_cast<float>(res - 1);
 
-	// Connect the diagonals to prevent the box from collapsing on itself (Diagonal length: size * sqrt(2))
-	float diagonal = size * 1.41421356f;
-	AddDistanceConstraint(p0, p2, diagonal, stiffness); // Bottom Left -> Top Right
-	AddDistanceConstraint(p1, p3, diagonal, stiffness); // Bottom Right -> Top Left
-}
+	// Kutunun sol alt köşesini hesaplıyoruz
+	float startX = centerX - size * 0.5f;
+	float startY = centerY - size * 0.5f;
 
-/// <summary>
-/// Creates a soft-body circular jelly using a "Bicycle Wheel" topology.
-/// A central core particle holds the structure together, connected to perimeter particles (spokes).
-/// The perimeter particles are connected to each other to form the outer skin (rim).
-/// An area constraint is applied to the perimeter to preserve the internal volume (pressure) and prevent inversion.
-/// </summary>
-/// <param name="centerX">X coordinate of the center.</param>
-/// <param name="centerY">Y coordinate of the center.</param>
-/// <param name="radius">Radius of the jelly ball.</param>
-/// <param name="numParticles">Number of perimeter particles (Max 16 due to Area Constraint limits).</param>
-/// <param name="particleMass">Mass of each individual particle.</param>
-/// <param name="stiffness">Stiffness of the distance constraints (springs).</param>
-void PhysicsEngine::CreateJellyBall(float centerX, float centerY, float radius, uint32_t numParticles, float particleMass, float stiffness)
-{
+	std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
+
 	// ==========================================
-	// 1. GUARD CLAUSES
+	// 1. KADEME: YÜKSEK ÇÖZÜNÜRLÜKLÜ IZGARA DİZİLİMİ
 	// ==========================================
-	// An area constraint requires a minimum of 3 particles to form a valid polygon.
-	if (numParticles < 3) return;
-
-	// Clamp the number of particles to the maximum allowed by our fixed-size, GPU-friendly arrays.
-	if (numParticles > MAX_AREA_PARTICLES)
+	for (int y = 0; y < res; ++y)
 	{
-		numParticles = MAX_AREA_PARTICLES;
+		for (int x = 0; x < res; ++x)
+		{
+			float px = startX + x * spacing;
+			float py = startY + y * spacing;
+			grid[y][x] = AddParticle(px, py, particleMass);
+		}
 	}
 
 	// ==========================================
-	// 2. CREATE THE CORE (The Hub)
+	// 2. KADEME: YAYLARI BAĞLAMA (Çelik Çerçeve + Jöle İç Organlar)
 	// ==========================================
-	// This central particle acts as the anchor for the spokes, preventing the circle from collapsing on itself.
-	float coreMass = particleMass * (numParticles * 0.5f);
-	uint32_t centerIndex = AddParticle(centerX, centerY, coreMass);
+	auto connectSpring = [&](int p1, int p2, float customStiffness) {
+		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
+		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
+		float dist = std::sqrt(dx * dx + dy * dy);
+		AddDistanceConstraint(p1, p2, dist, customStiffness);
+		};
 
-	// Array to store the indices of the outer skin particles for the area constraint.
-	std::vector<uint32_t> perimeterIndices;
-	perimeterIndices.reserve(numParticles);
-
-	// ==========================================
-	// 3. CREATE PERIMETER PARTICLES (The Outer Skin)
-	// ==========================================
-	// Distribute them evenly around the center using polar to cartesian coordinates.
-	const float PI = 3.14159265f;
-	float angleStep = (2.0f * PI) / static_cast<float>(numParticles);
-
-	for (uint32_t i = 0; i < numParticles; ++i)
+	for (int y = 0; y < res; ++y)
 	{
-		float angle = i * angleStep;
+		for (int x = 0; x < res; ++x)
+		{
+			int p = grid[y][x];
+
+			// Dış kenarlar çelik gibi (1.0f) olsun ki kutunun dış yüzeyi jilet gibi kalsın.
+			// İçerisi yumuşak (stiffness) olsun ki lömbürdesin.
+			bool isTop = (y == res - 1);
+			bool isBottom = (y == 0);
+			bool isLeft = (x == 0);
+			bool isRight = (x == res - 1);
+
+			// Yatay ve Dikey Bağlar
+			if (x < res - 1) {
+				float s = (isTop || isBottom) ? 1.0f : stiffness;
+				connectSpring(p, grid[y][x + 1], s);
+			}
+			if (y < res - 1) {
+				float s = (isLeft || isRight) ? 1.0f : stiffness;
+				connectSpring(p, grid[y + 1][x], s);
+			}
+
+			// Çapraz Bağlar (Kutunun çökmesini ve kağıt gibi katlanmasını engeller)
+			// İçerideki çapraz bağları stiffness ile jöleleştiriyoruz
+			if (x < res - 1 && y < res - 1) connectSpring(p, grid[y + 1][x + 1], stiffness * 0.8f);
+			if (x > 0 && y < res - 1)       connectSpring(p, grid[y + 1][x - 1], stiffness * 0.8f);
+		}
+	}
+
+	// ==========================================
+	// 3. KADEME: HÜCRESEL BASINÇ (Balon Etkisini Yok Eden Altın Vuruş)
+	// ==========================================
+	// Kutuyu dev bir balona çevirmiyoruz. İçindeki minik kareleri üçgenlere bölüp koruyoruz.
+	for (int y = 0; y < res - 1; ++y)
+	{
+		for (int x = 0; x < res - 1; ++x)
+		{
+			int pBL = grid[y][x];
+			int pBR = grid[y][x + 1];
+			int pTR = grid[y + 1][x + 1];
+			int pTL = grid[y + 1][x];
+
+			// Minik kareyi iki üçgene bölüp hacmi kilitle!
+			auto addTriArea = [&](int i1, int i2, int i3) {
+				std::vector<uint32_t> tri = { static_cast<uint32_t>(i1), static_cast<uint32_t>(i2), static_cast<uint32_t>(i3) };
+				float area = 0.0f;
+				for (int j = 0; j < 3; ++j) {
+					const Particle2D& pA = m_particles[tri[j]];
+					const Particle2D& pB = m_particles[tri[(j + 1) % 3]];
+					area += (pA.position[0] * pB.position[1]) - (pB.position[0] * pA.position[1]);
+				}
+				// Minik hücreler asla sönmeyecek, asla topa dönüşmeyecek!
+				AddAreaConstraint(tri, std::abs(area * 0.5f), 1.0f);
+				};
+
+			addTriArea(pBL, pBR, pTL);
+			addTriArea(pBR, pTR, pTL);
+		}
+	}
+}
+
+void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness)
+{
+	m_currentBodyId++;
+
+	const float PI = 3.14159265f;
+
+	// ==========================================
+	// 1. KADEME: DIŞ ZIRH (128 Parçacık - Aşılmaz Duvar)
+	// ==========================================
+	const int outerCount = 128;
+	std::vector<uint32_t> outerIds;
+	outerIds.reserve(outerCount);
+
+	for (int i = 0; i < outerCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / outerCount;
+		float px = centerX + std::cos(angle) * radius;
+		float py = centerY + std::sin(angle) * radius;
+		outerIds.push_back(AddParticle(px, py, particleMass));
+	}
+
+	// ==========================================
+	// 2. KADEME: İÇ ET (32 Parçacık - Destek Amortisörü)
+	// ==========================================
+	const int innerCount = 32;
+	std::vector<uint32_t> innerIds;
+	innerIds.reserve(innerCount);
+	float innerRadius = radius * 0.70f; // Kabuğun %70'i kadar içeride
+
+	for (int i = 0; i < innerCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / innerCount;
+		float px = centerX + std::cos(angle) * innerRadius;
+		float py = centerY + std::sin(angle) * innerRadius;
+		innerIds.push_back(AddParticle(px, py, particleMass));
+	}
+
+	// ==========================================
+	// 3. KADEME: ÇEKİRDEK (8 Parçacık - Çökme Önleyici)
+	// ==========================================
+	const int coreCount = 8;
+	std::vector<uint32_t> coreIds;
+	coreIds.reserve(coreCount);
+	float coreRadius = radius * 0.20f;
+
+	for (int i = 0; i < coreCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / coreCount;
+		float px = centerX + std::cos(angle) * coreRadius;
+		float py = centerY + std::sin(angle) * coreRadius;
+		coreIds.push_back(AddParticle(px, py, particleMass));
+	}
+
+	// ==========================================
+		// 4. YAYLARI BAĞLAMA (MÜKEMMEL SQUISH MİMARİSİ)
+		// ==========================================
+	auto connectSpring = [&](uint32_t p1, uint32_t p2, float customStiffness) {
+		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
+		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
+		float dist = std::sqrt(dx * dx + dy * dy);
+		AddDistanceConstraint(p1, p2, dist, customStiffness);
+		};
+
+	// A. DIŞ ZIRHI BAĞLA
+	for (int i = 0; i < outerCount; ++i)
+	{
+		// 1. STRUCTURAL YAY (ÇELİK ZİNCİR): 
+		// Kullanıcının stiffness değerini eziyoruz! Dış halkalar asla kopmamalı. 
+		// Daima 1.0f veriyoruz ki Area Constraint'in hesabı şaşmasın.
+		connectSpring(outerIds[i], outerIds[(i + 1) % outerCount], 1.0f);
+
+		// 2. BENDING YAY (JÖLELİK BURADA!): 
+		// Yüzeyin kağıt gibi katlanmasını engeller ama yumuşakça bükülmesine izin verir.
+		connectSpring(outerIds[i], outerIds[(i + 2) % outerCount], stiffness);
+
+		// 3. İÇ ETE DESTEK: 
+		// Dış zırh içeriye doğru yaylanabilsin diye çok zayıf bir bağ.
+		int innerTarget = i / (outerCount / innerCount);
+		connectSpring(outerIds[i], innerIds[innerTarget], stiffness * 0.5f);
+	}
+
+	// B. İÇ ETİ BAĞLA (SU GİBİ AKIŞKAN)
+	for (int i = 0; i < innerCount; ++i)
+	{
+		connectSpring(innerIds[i], innerIds[(i + 1) % innerCount], stiffness * 0.5f);
+		connectSpring(innerIds[i], innerIds[(i + 2) % innerCount], stiffness * 0.5f);
+
+		int coreTarget = i / (innerCount / coreCount);
+		connectSpring(innerIds[i], coreIds[coreTarget], stiffness * 0.2f);
+	}
+
+	// C. ÇEKİRDEĞİ BAĞLA (MERKEZ DİREK)
+	for (int i = 0; i < coreCount; ++i)
+	{
+		connectSpring(coreIds[i], coreIds[(i + 1) % coreCount], stiffness);
+		connectSpring(coreIds[i], coreIds[(i + 2) % coreCount], stiffness);
+		connectSpring(coreIds[i], coreIds[(i + 3) % coreCount], stiffness);
+	}
+
+	// ==========================================
+	// 5. HACİM KORUMASI (AREA CONSTRAINT)
+	// ==========================================
+	// Maksimum limitimiz (MAX_AREA_PARTICLES) 4096 olduğu için 128'i buraya rahatça verebiliriz.
+	float restArea = PI * radius * radius;
+	AddAreaConstraint(outerIds, restArea, 1.0f);
+}
+
+void PhysicsEngine::CreateArmoredSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness)
+{
+	m_currentBodyId++;
+
+	// ==========================================
+	// 1. KADEME: DIŞ ZIRH (KABUK) - Tami Tamına 64 Parçacık!
+	// ==========================================
+	const int outerCount = 64;
+	std::vector<uint32_t> outerIds;
+	outerIds.reserve(outerCount);
+
+	const float PI = 3.14159265f;
+
+	// Dış zırhı diziyoruz
+	for (int i = 0; i < outerCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / outerCount;
+		float px = centerX + std::cos(angle) * radius;
+		float py = centerY + std::sin(angle) * radius;
+		outerIds.push_back(AddParticle(px, py, particleMass));
+	}
+
+	// ==========================================
+	// 2. KADEME: İÇ ET (DESTEK) - Sadece 16 Parçacık
+	// ==========================================
+	const int innerCount = 16;
+	std::vector<uint32_t> innerIds;
+	innerIds.reserve(innerCount);
+	float innerRadius = radius * 0.6f; // Kabuğun %60'ı kadar içeride
+
+	for (int i = 0; i < innerCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / innerCount;
+		float px = centerX + std::cos(angle) * innerRadius;
+		float py = centerY + std::sin(angle) * innerRadius;
+		innerIds.push_back(AddParticle(px, py, particleMass));
+	}
+
+	// ==========================================
+	// 3. KADEME: ÇEKİRDEK (BONE) - Sadece 4 Parçacık (Bisiklet Tekerleği belasından kurtulmak için)
+	// ==========================================
+	const int coreCount = 4;
+	std::vector<uint32_t> coreIds;
+	coreIds.reserve(coreCount);
+	float coreRadius = radius * 0.15f; // Tam merkeze çok yakın
+
+	for (int i = 0; i < coreCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / coreCount;
+		float px = centerX + std::cos(angle) * coreRadius;
+		float py = centerY + std::sin(angle) * coreRadius;
+		coreIds.push_back(AddParticle(px, py, particleMass));
+	}
+	// ==========================================
+		// 4. YAYLARI BAĞLAMA (MÜKEMMEL SQUISH MİMARİSİ)
+		// ==========================================
+	auto connectSpring = [&](uint32_t p1, uint32_t p2, float customStiffness) {
+		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
+		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
+		float dist = std::sqrt(dx * dx + dy * dy);
+		AddDistanceConstraint(p1, p2, dist, customStiffness);
+		};
+
+	// A. DIŞ ZIRHI BAĞLA
+	for (int i = 0; i < outerCount; ++i)
+	{
+		// 1. STRUCTURAL YAY (ÇELİK ZİNCİR): 
+		// Kullanıcının stiffness değerini eziyoruz! Dış halkalar asla kopmamalı. 
+		// Daima 1.0f veriyoruz ki Area Constraint'in hesabı şaşmasın.
+		connectSpring(outerIds[i], outerIds[(i + 1) % outerCount], 1.0f);
+
+		// 2. BENDING YAY (JÖLELİK BURADA!): 
+		// Yüzeyin kağıt gibi katlanmasını engeller ama yumuşakça bükülmesine izin verir.
+		connectSpring(outerIds[i], outerIds[(i + 2) % outerCount], stiffness);
+
+		// 3. İÇ ETE DESTEK: 
+		// Dış zırh içeriye doğru yaylanabilsin diye çok zayıf bir bağ.
+		int innerTarget = i / (outerCount / innerCount);
+		connectSpring(outerIds[i], innerIds[innerTarget], stiffness * 0.5f);
+	}
+
+	// B. İÇ ETİ BAĞLA (SU GİBİ AKIŞKAN)
+	for (int i = 0; i < innerCount; ++i)
+	{
+		connectSpring(innerIds[i], innerIds[(i + 1) % innerCount], stiffness * 0.5f);
+		connectSpring(innerIds[i], innerIds[(i + 2) % innerCount], stiffness * 0.5f);
+
+		int coreTarget = i / (innerCount / coreCount);
+		connectSpring(innerIds[i], coreIds[coreTarget], stiffness * 0.2f);
+	}
+
+	// C. ÇEKİRDEĞİ BAĞLA (MERKEZ DİREK)
+	for (int i = 0; i < coreCount; ++i)
+	{
+		connectSpring(coreIds[i], coreIds[(i + 1) % coreCount], stiffness);
+		connectSpring(coreIds[i], coreIds[(i + 2) % coreCount], stiffness);
+		connectSpring(coreIds[i], coreIds[(i + 3) % coreCount], stiffness);
+	}
+
+	// ==========================================
+	// 5. HACİM KORUMASI (AREA CONSTRAINT - BALON BÜYÜSÜ)
+	// ==========================================
+	// Sadece dış kabuğa Area Constraint veriyoruz! İçerideki parçacıklar sadece yaylarla esneyecek.
+	// Kusursuz bir dairenin alanı: PI * r^2
+	float restArea = PI * radius * radius;
+
+	// Pressure 1.0f veriyoruz ki top ezilse bile hacmini korumak için sağdan soldan pırtlasın!
+	AddAreaConstraint(outerIds, restArea, 1.0f);
+}
+
+void PhysicsEngine::CreateRealisticJiggle(float centerX, float centerY, float radius, float particleMass, float stiffness)
+{
+	m_currentBodyId++; // Kendi kendini patlatmasını engeller
+	const float PI = 3.14159265f;
+
+	// ==========================================
+	// 1. KADEME: DIŞ DERİ (GERÇEK KÜTLE - FİZİĞİ BU YÖNETİR)
+	// ==========================================
+	int boundCount = 80;
+	std::vector<uint32_t> boundIds;
+	boundIds.reserve(boundCount);
+
+	for (int i = 0; i < boundCount; ++i)
+	{
+		float angle = (2.0f * PI * i) / boundCount;
 		float px = centerX + std::cos(angle) * radius;
 		float py = centerY + std::sin(angle) * radius;
 
-		uint32_t pIdx = AddParticle(px, py, particleMass);
-		perimeterIndices.push_back(pIdx);
+		// TAVANA ÇİVİLEME
+		float mass = (py > centerY + (radius * 0.85f)) ? 0.0f : particleMass;
+		boundIds.push_back(AddParticle(px, py, mass));
 	}
 
 	// ==========================================
-	// 4. CONNECT THE DISTANCE CONSTRAINTS (Springs)
+	// 2. KADEME: İÇ İSKELET (KÖLE KÜTLE - 0.001f)
 	// ==========================================
-	// Calculate the exact straight-line distance between two neighboring particles on the perimeter.
-	// Formula: distance = 2 * r * sin(theta / 2)
-	float rimLength = 2.0f * radius * std::sin(angleStep * 0.5f);
+	int res = 26;
+	float spacing = (radius * 2.0f) / (float)(res - 1);
+	std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
 
-	for (uint32_t i = 0; i < numParticles; ++i)
+	// İŞTE BÜYÜ BURADA: İçerisi dışarının 1000'de 1'i ağırlığında!
+	// Yerçekimi bunu asıp sündüremez, bağırsak gibi sarkması imkansızlaşır.
+	float slaveMass = particleMass * 0.001f;
+
+	for (int y = 0; y < res; ++y)
 	{
-		uint32_t currentParticle = perimeterIndices[i];
+		for (int x = 0; x < res; ++x)
+		{
+			float px = (centerX - radius) + x * spacing;
+			float py = (centerY - radius) + y * spacing;
+			float dx = px - centerX;
+			float dy = py - centerY;
 
-		// Use modulo to smoothly wrap the last particle back to the first one.
-		uint32_t nextParticle = perimeterIndices[(i + 1) % numParticles];
-
-		// A. The Rim: Connect neighbor to neighbor (Outer skin)
-		AddDistanceConstraint(currentParticle, nextParticle, rimLength, stiffness);
-
-		// B. The Spokes: Connect the perimeter particle to the center core
-		AddDistanceConstraint(centerIndex, currentParticle, radius, stiffness);
+			// Deriye çok yakınlaşmasın (iç içe girmesin)
+			if (dx * dx + dy * dy < (radius - spacing * 1.2f) * (radius - spacing * 1.2f))
+			{
+				float mass = (py > centerY + (radius * 0.85f)) ? 0.0f : slaveMass;
+				grid[y][x] = AddParticle(px, py, mass);
+			}
+		}
 	}
 
 	// ==========================================
-	// 5. VOLUME / AREA PRESERVATION
+	// 3. KADEME: YAYLARI BAĞLAMA
 	// ==========================================
-	// Calculate the exact mathematical area of this regular polygon.
-	// Area of a regular polygon = n * 0.5 * r^2 * sin(2 * PI / n)
-	float restArea = numParticles * 0.5f * radius * radius * std::sin(angleStep);
-
-	// Apply the Area Constraint to the perimeter. 
-	// A pressure of 1.0f means it will try to perfectly maintain this calculated rest area.
-	AddAreaConstraint(perimeterIndices, restArea, 1.0f);
-}
-
-void PhysicsEngine::CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness)
-{
-	const int res = 52; // 52 x 52 grid = 2704 particles per drop, which is a good balance between detail and performance for a jiggle effect. Adjust as needed.
-	const float spacing = (radius * 2.0f) / static_cast<float>(res - 1);
-
-	auto buildDrop = [this, res, spacing, radius, particleMass, stiffness](float cx, float cy, float tiltDir) -> std::vector<std::vector<int>>
-		{
-			// Fill the grid with -1 (empty)
-			std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
-
-			// ==========================================
-			// 1. CREATE LATTICE POINTS (THE BODY)
-			// ==========================================
-			for (int y = 0; y < res; ++y)
-			{
-				for (int x = 0; x < res; ++x)
-				{
-					float px = (cx - radius) + (x * spacing);
-					float py = (cy - radius) + (y * spacing);
-
-					// Circle Mask
-					float dx = px - cx;
-					float dy = py - cy;
-					if ((dx * dx + dy * dy) <= (radius * radius * 1.2f))
-					{
-						float mass = particleMass;
-
-						// Top Points (Anchors/Pins)
-						if (y >= res - 2 && x > 0 && x < res - 1)
-						{
-							mass = 0.0f; // Keeps it suspended in the air
-							py += radius * 0.1f; // Stretch upwards
-							px += tiltDir * radius * 0.25f; // Tilt inwards
-						}
-
-						grid[y][x] = AddParticle(px, py, mass);
-					}
-				}
-			}
-
-			// ==========================================
-			// 2. CONNECT INTERNAL SPRINGS (LATTICE)
-			// ==========================================
-			for (int y = 0; y < res; ++y)
-			{
-				for (int x = 0; x < res; ++x)
-				{
-					int p1 = grid[y][x];
-					if (p1 == -1) continue;
-
-					auto addSpring = [this, p1, stiffness](int p2) {
-						if (p2 == -1) return;
-						float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
-						float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
-						float dist = std::sqrt(dx * dx + dy * dy);
-						AddDistanceConstraint(p1, p2, dist, stiffness);
-						};
-
-					// Structural and Diagonal Springs
-					if (x < res - 1) addSpring(grid[y][x + 1]);
-					if (y < res - 1) addSpring(grid[y + 1][x]);
-					if (x < res - 1 && y < res - 1) addSpring(grid[y + 1][x + 1]);
-					if (x > 0 && y < res - 1)       addSpring(grid[y + 1][x - 1]);
-				}
-			}
-
-			// ==========================================
-			// 3. NEW: CELLULAR VOLUME CONSERVATION (ANTI-BUCKLING)
-			// ==========================================
-			for (int y = 0; y < res - 1; ++y)
-			{
-				for (int x = 0; x < res - 1; ++x)
-				{
-					int pBL = grid[y][x];         // Bottom-Left
-					int pBR = grid[y][x + 1];     // Bottom-Right
-					int pTR = grid[y + 1][x + 1]; // Top-Right
-					int pTL = grid[y + 1][x];     // Top-Left
-
-					// If all 4 corners are inside the circle mask (valid particles)
-					if (pBL != -1 && pBR != -1 && pTR != -1 && pTL != -1)
-					{
-						std::vector<uint32_t> cellParticles = {
-							static_cast<uint32_t>(pBL),
-							static_cast<uint32_t>(pBR),
-							static_cast<uint32_t>(pTR),
-							static_cast<uint32_t>(pTL)
-						};
-
-						// Due to top stretching, the area might not be a perfect square.
-						// Therefore, we measure the current actual area using the Shoelace formula.
-						float area = 0.0f;
-						for (int j = 0; j < 4; ++j)
-						{
-							const Particle2D& p1 = m_particles[cellParticles[j]];
-							const Particle2D& p2 = m_particles[cellParticles[(j + 1) % 4]];
-							area += (p1.position[0] * p2.position[1]) - (p2.position[0] * p1.position[1]);
-						}
-
-						// We use std::abs because the order of points (clockwise vs counter-clockwise) 
-						// might make the Shoelace area negative; we need the absolute magnitude.
-						float restArea = std::abs(area * 0.5f);
-
-						// Apply Area Constraint to this cell. Pressure 1.0f = Preserve volume at all costs!
-						AddAreaConstraint(cellParticles, restArea, 1.0f);
-					}
-				}
-			}
-
-			return grid;
+	auto connectSpring = [&](int p1, int p2, float customStiffness) {
+		if (p1 == -1 || p2 == -1) return;
+		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
+		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
+		float dist = std::sqrt(dx * dx + dy * dy);
+		AddDistanceConstraint(p1, p2, dist, customStiffness);
 		};
 
-	// ==========================================
-	// 3. Create Two Drops
-	// ==========================================
-	auto leftGrid = buildDrop(startX - radius * 0.9f, startY, 1.0f);
-	auto rightGrid = buildDrop(startX + radius * 0.9f, startY, -1.0f);
-
-	// ==========================================
-	// 4. Connect the Two Drops with a Soft Spring
-	// ==========================================
-	int leftInner = leftGrid[res / 2][res - 1] != -1 ? leftGrid[res / 2][res - 1] : leftGrid[res / 2][res - 2];
-	int rightInner = rightGrid[res / 2][0] != -1 ? rightGrid[res / 2][0] : rightGrid[res / 2][1];
-
-	if (leftInner != -1 && rightInner != -1)
+	// A. İç iskeleti kendi içinde bağla
+	for (int y = 0; y < res; ++y)
 	{
-		float dx = m_particles[leftInner].position[0] - m_particles[rightInner].position[0];
-		float dy = m_particles[leftInner].position[1] - m_particles[rightInner].position[1];
-		float dist = std::sqrt(dx * dx + dy * dy);
-
-		AddDistanceConstraint(leftInner, rightInner, dist, stiffness * 0.3f);
+		for (int x = 0; x < res; ++x)
+		{
+			int p = grid[y][x];
+			if (p == -1) continue;
+			if (x < res - 1) connectSpring(p, grid[y][x + 1], stiffness);
+			if (y < res - 1) connectSpring(p, grid[y + 1][x], stiffness);
+			if (x < res - 1 && y < res - 1) connectSpring(p, grid[y + 1][x + 1], stiffness);
+			if (x > 0 && y < res - 1)       connectSpring(p, grid[y + 1][x - 1], stiffness);
+		}
 	}
+
+	// B. Dış deriyi iskelete ZIMBALA (Çift Dikiş)
+	for (int i = 0; i < boundCount; ++i)
+	{
+		// Dış deri kendi içinde esnek (Balon gibi şişebilmesi için)
+		connectSpring(boundIds[i], boundIds[(i + 1) % boundCount], stiffness * 0.2f);
+		connectSpring(boundIds[i], boundIds[(i + 2) % boundCount], stiffness * 0.2f);
+
+		int best1 = -1, best2 = -1;
+		float minDist1 = 99999.0f, minDist2 = 99999.0f;
+
+		for (int gy = 0; gy < res; ++gy)
+		{
+			for (int gx = 0; gx < res; ++gx)
+			{
+				int gp = grid[gy][gx];
+				if (gp != -1)
+				{
+					float dx = m_particles[boundIds[i]].position[0] - m_particles[gp].position[0];
+					float dy = m_particles[boundIds[i]].position[1] - m_particles[gp].position[1];
+					float dSq = dx * dx + dy * dy;
+					if (dSq < minDist1) {
+						minDist2 = minDist1; best2 = best1;
+						minDist1 = dSq; best1 = gp;
+					}
+					else if (dSq < minDist2) {
+						minDist2 = dSq; best2 = gp;
+					}
+				}
+			}
+		}
+
+		// Dış deriyi köle iskelete çelik gibi bağlıyoruz (1.0f). 
+		// İskelet çok hafif olduğu için artık deriye İTAAT edecek!
+		if (best1 != -1) connectSpring(boundIds[i], best1, 1.0f);
+		if (best2 != -1) connectSpring(boundIds[i], best2, 1.0f);
+	}
+
+	// ==========================================
+	// 4. KADEME: TEK VE KUSURSUZ ALAN KORUMASI
+	// ==========================================
+	// O saçma sapan 1000 üçgenlik constraint'leri kaldırdık. Bütün işi ana kabuk yapacak!
+	float restArea = PI * radius * radius;
+	AddAreaConstraint(boundIds, restArea, 1.0f);
 }
