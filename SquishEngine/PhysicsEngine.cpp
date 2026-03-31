@@ -102,16 +102,17 @@ void PhysicsEngine::AddDistanceConstraint(uint32_t p1, uint32_t p2, float restLe
 /// <param name="pressure"></param>
 void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndices, float restArea, float pressure)
 {
-	if (particleIndices.size() < 3 || particleIndices.size() > MAX_AREA_PARTICLES) return; // Area constraint requires at least 3 particles and has a maximum limit
+	if (particleIndices.size() < 3) return; // Area constraint requires at least 3 particles.
+
 	AreaConstraint constraint;
+	constraint.startIndex = static_cast<uint32_t>(m_areaIndices.size());
 	constraint.particleCount = static_cast<uint32_t>(particleIndices.size());
 	constraint.restArea = restArea;
 	constraint.pressure = pressure;
-	// Copy particle indices to the fixed-size array in the constraint
-	for (size_t i = 0; i < particleIndices.size(); ++i)
-	{
-		constraint.particleIndices[i] = particleIndices[i];
-	}
+
+	// Append particle indices to the global area indices list.
+	m_areaIndices.insert(m_areaIndices.end(), particleIndices.begin(), particleIndices.end());
+
 	m_areaConstraints.push_back(constraint);
 }
 
@@ -129,7 +130,7 @@ void PhysicsEngine::Integrate(float deltaTime)
 {
 	// World Forces
 	const float gravity[2] = { 0.0f, -9.81f }; // Earth gravity, applied to all particles
-	const float damping = 0.99f; // Global damping factor to simulate energy loss, applied to velocities
+	const float dragFactor = std::pow(0.5f, deltaTime); // Global damping factor to simulate energy loss, applied to velocities
 
 	// Apply forces and integrate motion for each particle
 	for (auto& p : m_particles)
@@ -146,8 +147,8 @@ void PhysicsEngine::Integrate(float deltaTime)
 		p.velocity[1] += aY * deltaTime; // v = v + a * dt
 
 		// 3. Simulate energy loss
-		p.velocity[0] *= damping; // v = v * damping
-		p.velocity[1] *= damping; // v = v * damping
+		p.velocity[0] *= dragFactor; // v = v * damping
+		p.velocity[1] *= dragFactor; // v = v * damping
 
 		// Store previous position for velocity update after constraint solving.
 		p.prevPosition[0] = p.position[0];
@@ -160,35 +161,6 @@ void PhysicsEngine::Integrate(float deltaTime)
 		// 5. Reset forces for the next frame
 		p.force[0] = 0.0f;
 		p.force[1] = 0.0f;
-	}
-}
-/// <summary>
-/// Collision Handling with The Floor.
-/// OBSOLETE METHOD - NOT USED IN CURRENT SIMULATION
-/// </summary>
-void PhysicsEngine::HandleCollisions()
-{
-	const float floorY = -1.0f;
-	const float friction = 0.5f; // Friction: 1.0 means no slip, 0.0 means full slip.
-
-	for (auto& p : m_particles)
-	{
-		if (p.position[1] < floorY)
-		{
-			// 1. Move the particle back to the floor level.
-			p.position[1] = floorY;
-
-			// 2. Stop vertical movement (prevent bouncing)
-			// Since velocity is calculated as (pos - prevPos), we set prevPosition to the current position to zero out the vertical velocity.
-			p.prevPosition[1] = floorY;
-
-			// 3. Horizontal PBD friction (momentum stealing). Find how much horizontal movement we had in this frame (deltaX).
-			float deltaX = p.position[0] - p.prevPosition[0];
-
-			// Move the previous position towards the current position by a fraction determined by the friction.
-			// This reduces the horizontal velocity when calculating the new velocity in UpdateVelocities.
-			p.prevPosition[0] = p.position[0] - (deltaX * (1.0f - friction));
-		}
 	}
 }
 
@@ -251,17 +223,25 @@ void PhysicsEngine::SolveConstraints()
 		// =============================
 		// 2. SOLVE AREA CONSTRAINTS
 		// =============================
+		std::vector<float> gradientsX;
+		std::vector<float> gradientsY;
+
 		for (const auto& constraint : m_areaConstraints)
 		{
-			float currentArea = 0.0f;
+			// 2.0. Memory Allocation & Setup
 			uint32_t count = constraint.particleCount;
 			if (count < 3) continue;
 
-			// 2.1. Calculate the current area using the Shoelace formula.
+			gradientsX.resize(count);
+			gradientsY.resize(count);
+
+			float currentArea = 0.0f;
+
+			// 2.1. Area Calculation Using Shoelace Formula
 			for (uint32_t j = 0; j < count; ++j)
 			{
-				uint32_t idx1 = constraint.particleIndices[j];
-				uint32_t idx2 = constraint.particleIndices[(j + 1) % count]; // Wrap around to the first particle
+				uint32_t idx1 = m_areaIndices[constraint.startIndex + j];
+				uint32_t idx2 = m_areaIndices[constraint.startIndex + ((j + 1) % count)]; // Wrap around to the first particle
 
 				const Particle2D& p1 = m_particles[idx1];
 				const Particle2D& p2 = m_particles[idx2];
@@ -271,24 +251,19 @@ void PhysicsEngine::SolveConstraints()
 			}
 			currentArea *= 0.5f;
 
-			// 2.2. Calculate how much the current area deviates from the rest area.
+			// 2.2. Calculate Area Deviation and Target Area
 			float targetArea = constraint.restArea * constraint.pressure; // (Pressure 1 = Normal Volume, 1.2 = Inflated, 0.8 Deflated)
-			//if (currentArea < 0.0f) targetArea = -targetArea; // Handle negative area.
 			float error = currentArea - targetArea;
-			// if (std::abs(error) < 0.0001f) continue;
 
-			// 2.3. Calculate the gradients (push directions).
-			float gradientsX[MAX_AREA_PARTICLES];
-			float gradientsY[MAX_AREA_PARTICLES];
-
-			float denominator = 0.0f; // Used to avoid division by zero when normalizing gradients
+			// 2.3. Calculate Gradients (Pushing Direction)
+			float denominator = 0.0f; // Avoid division by zero when all particles are immovable.
 
 			for (uint32_t j = 0; j < count; ++j)
 			{
 				// Particle Indices
-				uint32_t prevIdx = constraint.particleIndices[(j + count - 1) % count]; // Wrap around
-				uint32_t currentIdx = constraint.particleIndices[j];
-				uint32_t nextIdx = constraint.particleIndices[(j + 1) % count]; // Wrap around
+				uint32_t prevIdx = m_areaIndices[constraint.startIndex + ((j + count - 1) % count)];
+				uint32_t currentIdx = m_areaIndices[constraint.startIndex + j];
+				uint32_t nextIdx = m_areaIndices[constraint.startIndex + ((j + 1) % count)];
 
 				// Particle References
 				const Particle2D& pPrev = m_particles[prevIdx];
@@ -309,7 +284,8 @@ void PhysicsEngine::SolveConstraints()
 					denominator += (gradX * gradX + gradY * gradY) * weight;
 				}
 			}
-			// 2.4.
+
+			// 2.4. Apply PBD Correction
 			if (denominator <= 0.0f) continue; // Skip if all particles are immovable to avoid division by zero.
 
 			// PBD Multiplier (Lambda)
@@ -317,7 +293,7 @@ void PhysicsEngine::SolveConstraints()
 
 			for (uint32_t j = 0; j < count; ++j)
 			{
-				uint32_t idx = constraint.particleIndices[j];
+				uint32_t idx = m_areaIndices[constraint.startIndex + j];
 				Particle2D& p = m_particles[idx];
 				
 				float weight = p.inverseMass;

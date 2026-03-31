@@ -23,8 +23,6 @@ struct Particle2D
 	// TODO: Carry particle radius here later. But it will add 4 bytes to the struct!! Currently a global constant is used.
 };
 
-class SpatialHash; // Forward declaration of SpatialHash for use in PhysicsEngine
-
 /// <summary>
 /// Defines a constraint that maintains a fixed distance between two particles, simulating a spring-like connection.
 /// </summary>
@@ -38,15 +36,16 @@ struct DistanceConstraint // 16-Byte Block
 	float stiffness; // How strongly the constraint is enforced (0: gel-like to 1: rigid)
 };
 
-constexpr uint32_t MAX_AREA_PARTICLES = 4096; // Problem: Memory usage and stack...
 struct AreaConstraint
 {
-	uint32_t particleIndices[MAX_AREA_PARTICLES]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
-
-	uint32_t particleCount; // Number of particles in the area constraint
+	//uint32_t particleIndices[MAX_AREA_PARTICLES]; // Not a std::vector to avoid dynamic memory allocation, fixed size sent to GPU via HLSL
+	uint32_t startIndex;
+	uint32_t particleCount;
 	float restArea; // The ideal area that the particles should maintain, calculated with Shoelace formula
 	float pressure; // Internal pressure (0.8: deflated, 1.0: normal, 1.2: inflated)
 };
+
+class SpatialHash; // Forward declaration of SpatialHash for use in PhysicsEngine
 
 class PhysicsEngine
 {
@@ -58,7 +57,6 @@ public:
 	// ===========================
 	// Particle Management
 	// ===========================
-
 
 	static constexpr float GLOBAL_PARTICLE_RADIUS = 0.023f; // 0.0108
 	static constexpr float GLOBAL_GRID_SPACING = GLOBAL_PARTICLE_RADIUS * 2.0f;
@@ -97,11 +95,11 @@ private:
 	uint32_t m_currentBodyId = 0;
 
 	uint32_t m_solverIterations = 20; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
+
 	// ===========================
 	// Internal Simulation Steps
 	// ===========================
 	void Integrate(float deltaTime); // Updates particle positions and velocities based on current forces and velocities.
-	void HandleCollisions(); // Detects and resolves collisions between particles and with boundaries.
 	void SolveConstraints(); // Solves all distance and area constraints to maintain the physical properties of the system.
 	void UpdateVelocities(float deltaTime); // Updates particle velocities based on the changes in position after constraint solving.
 
@@ -112,6 +110,7 @@ private:
 	std::vector<Particle2D> m_particles; // Stores all particles in the simulation
 	std::vector<DistanceConstraint> m_distanceConstraints; // Stores all distance constraints between particles
 	std::vector<AreaConstraint> m_areaConstraints; // Stores all area constraints for groups of particles
+	std::vector<uint32_t> m_areaIndices; // Stores indices of particles for area constraints
 
 	std::unique_ptr<SpatialHash> m_spatialHash; // Spatial Hash For Collision Detection
 };
