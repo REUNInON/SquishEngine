@@ -58,7 +58,7 @@ public:
 	// Particle Management
 	// ===========================
 
-	static constexpr float GLOBAL_PARTICLE_RADIUS = 0.0275f; // 0.0108
+	static constexpr float GLOBAL_PARTICLE_RADIUS = 0.02f; // 0.0108
 	static constexpr float GLOBAL_GRID_SPACING = GLOBAL_PARTICLE_RADIUS * 2.0f;
 
 	// Adds a new particle to the simulation with the specified position and mass, returning its index.
@@ -76,6 +76,7 @@ public:
 
 	// Advances the simulation by deltaTime seconds, runs every frame.
 	void StepSimulation(float deltaTime);
+	void SetWorldSoftness(uint32_t iterations) { m_solverIterations = iterations; } // Adjusts the number of iterations the solver runs, affecting the stiffness of the simulated bodies.
 
 	// ===========================
 	// Getter for Rendering
@@ -88,18 +89,16 @@ public:
 
 	void CreateJellyBox(float startX, float startY, float size, float particleMass, float stiffness);
 
-	void CreateRealisticJiggle(float startX, float startY, float radius, float particleMass, float stiffness);
+	void CreateHangingJelly(float startX, float startY, float radius, float particleMass, float stiffness);
 
 	void CreateSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness);
-
-	void CreateArmoredSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness);
 
 #pragma endregion
 
 private:
 	uint32_t m_currentBodyId = 0;
 
-	uint32_t m_solverIterations = 20; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
+	uint32_t m_solverIterations = 10; // Default stubbornness of the system, more iterations = stiffer body, less iterations = softer body.
 
 	// ===========================
 	// Internal Simulation Steps

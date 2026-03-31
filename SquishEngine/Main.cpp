@@ -53,14 +53,95 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return -1;
 	}
 
-    g_physics.CreateJellyBox(0.1f, -0.8f, 0.5f, 1.0f, 0.5f); // Example Jelly Box
+#pragma region Simulations
 
-    g_physics.CreateRealisticJiggle(0.0f, 0.5f, 0.45f, 1.0f, 0.0025f);
+	// ============================================================================
+	int sim = 0; // Change this to switch between different simulations!!
+	// NOTE: To change simulation overall softness, adjust the solver iterations with g_physics.SetWorldSoftness(iterations) (More iterations = stiffer body, Less iterations = softer body)
+    // ============================================================================
 
-    //.CreateSoftBall(0.1f, -0.6f, 0.25f, 1.0f, 0.25f);
+	if (sim == 0)
+    {
+        // ============================================================================
+        // JELLY BOX
+        // ============================================================================
+        g_physics.SetWorldSoftness(16);
+        g_physics.CreateJellyBox(0.0f, 0.75f, 0.75f, 1.0f, 0.5f);
+    }
+    else if (sim == 1)
+    {
+        // ============================================================================
+        // SMALL & BIG JELLY BALLS
+        // ============================================================================
+        g_physics.SetWorldSoftness(10);
+        g_physics.CreateSoftBall(0.0f, 0.0f, 0.1f, 1.0f, 0.5f);
+        g_physics.CreateSoftBall(0.0f, -0.6f, 0.25f, 25.0f, 0.01f);
 
-    //g_physics.CreateSoftBall(0.0f, 0.0f, 0.2f, 1.0f, 0.8f);
- 
+    }
+    else if (sim == 2)
+    {
+        // ============================================================================
+		// SMALL JELLY BALL PLAYGROUND
+        // ============================================================================
+        g_physics.SetWorldSoftness(10);
+        g_physics.CreateSoftBall(0.0f, 0.8f, 0.1f, 1.0f, 0.25f);
+        g_physics.CreateSoftBall(0.1f, 0.5f, 0.1f, 1.0f, 0.25f);
+        g_physics.CreateSoftBall(0.1f, 0.0f, 0.1f, 1.0f, 0.25f);
+        g_physics.CreateSoftBall(-0.3f, 0.0f, 0.1f, 1.0f, 0.25f);
+        g_physics.CreateSoftBall(0.25f, -0.8f, 0.1f, 1.0f, 0.75f);
+        g_physics.CreateSoftBall(0.0f, -0.8f, 0.1f, 1.0f, 0.25f);
+        g_physics.CreateSoftBall(-0.25f, -0.8f, 0.1f, 1.0f, 0.2f);
+    }
+    else if (sim == 3)
+    {
+        // ============================================================================
+        // COLLIDING JELLY BALLS
+		// ============================================================================
+        g_physics.SetWorldSoftness(16);
+        g_physics.CreateSoftBall(0.0f, 0.0f, 0.25f, 1.0f, 0.25f);
+        g_physics.CreateSoftBall(0.0f, 0.5f, 0.2f, 1.0f, 0.1f);
+    }
+    else if (sim == 4)
+    {
+        // ============================================================================
+        // JELLY BALL
+        // ============================================================================
+        g_physics.SetWorldSoftness(8);
+        g_physics.CreateSoftBall(0.0f, 2.0f, 0.25f, 1.0f, 0.75f);
+    }
+	else if (sim == 5)
+    {
+        // ============================================================================
+        // SOFT JELLY BALL
+        // ============================================================================
+		g_physics.SetWorldSoftness(5);
+        g_physics.CreateSoftBall(0.0f, 0.0f, 0.45f, 1.0f, 0.01f);
+    }
+    else if (sim == 6)
+    {
+        // ============================================================================
+		// HANGING JELLY
+        // ============================================================================
+        g_physics.CreateHangingJelly(0.0f, 0.25f, 0.5f, 1.0f, 0.1f);
+    }
+    else if (sim == 7)
+    {
+        // ============================================================================
+		// HANGING JELLY & SOFT BALL
+        // ============================================================================
+        g_physics.CreateHangingJelly(0.0f, 0.0f, 0.5f, 1.0f, 0.01f);
+        g_physics.CreateSoftBall(0.0f, -0.8f, 0.1f, 1.0f, 0.25f);
+    }
+    else
+    {
+        // ============================================================================
+		// SOFT HANGING JELLY
+        // ============================================================================
+        g_physics.CreateHangingJelly(0.0f, 0.0f, 0.5f, 1.0f, 0.01f);
+    }
+
+#pragma endregion
+
     // 5. GAME LOOP
 
     MSG msg = {};

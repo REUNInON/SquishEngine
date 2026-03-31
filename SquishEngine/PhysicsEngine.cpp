@@ -129,7 +129,7 @@ void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndic
 void PhysicsEngine::Integrate(float deltaTime)
 {
 	// World Forces
-	const float gravity[2] = { 0.0f, -9.81f }; // Earth gravity, applied to all particles
+	const float gravity[2] = { 0.0f, -9.81f }; // Earth gravity -9.81f, applied to all particles
 	const float dragFactor = std::pow(0.5f, deltaTime); // Global damping factor to simulate energy loss, applied to velocities
 
 	// Apply forces and integrate motion for each particle
@@ -643,121 +643,11 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 	AddAreaConstraint(outerIds, restArea, 1.0f);
 }
 
-void PhysicsEngine::CreateArmoredSoftBall(float centerX, float centerY, float radius, float particleMass, float stiffness)
+void PhysicsEngine::CreateHangingJelly(float centerX, float centerY, float radius, float particleMass, float stiffness)
 {
 	m_currentBodyId++;
 
-	// ==========================================
-	// 1. KADEME: DIŞ ZIRH (KABUK) - Tami Tamına 64 Parçacık!
-	// ==========================================
-	const int outerCount = 64;
-	std::vector<uint32_t> outerIds;
-	outerIds.reserve(outerCount);
-
-	const float PI = 3.14159265f;
-
-	// Dış zırhı diziyoruz
-	for (int i = 0; i < outerCount; ++i)
-	{
-		float angle = (2.0f * PI * i) / outerCount;
-		float px = centerX + std::cos(angle) * radius;
-		float py = centerY + std::sin(angle) * radius;
-		outerIds.push_back(AddParticle(px, py, particleMass));
-	}
-
-	// ==========================================
-	// 2. KADEME: İÇ ET (DESTEK) - Sadece 16 Parçacık
-	// ==========================================
-	const int innerCount = 16;
-	std::vector<uint32_t> innerIds;
-	innerIds.reserve(innerCount);
-	float innerRadius = radius * 0.6f; // Kabuğun %60'ı kadar içeride
-
-	for (int i = 0; i < innerCount; ++i)
-	{
-		float angle = (2.0f * PI * i) / innerCount;
-		float px = centerX + std::cos(angle) * innerRadius;
-		float py = centerY + std::sin(angle) * innerRadius;
-		innerIds.push_back(AddParticle(px, py, particleMass));
-	}
-
-	// ==========================================
-	// 3. KADEME: ÇEKİRDEK (BONE) - Sadece 4 Parçacık (Bisiklet Tekerleği belasından kurtulmak için)
-	// ==========================================
-	const int coreCount = 4;
-	std::vector<uint32_t> coreIds;
-	coreIds.reserve(coreCount);
-	float coreRadius = radius * 0.15f; // Tam merkeze çok yakın
-
-	for (int i = 0; i < coreCount; ++i)
-	{
-		float angle = (2.0f * PI * i) / coreCount;
-		float px = centerX + std::cos(angle) * coreRadius;
-		float py = centerY + std::sin(angle) * coreRadius;
-		coreIds.push_back(AddParticle(px, py, particleMass));
-	}
-	// ==========================================
-		// 4. YAYLARI BAĞLAMA (MÜKEMMEL SQUISH MİMARİSİ)
-		// ==========================================
-	auto connectSpring = [&](uint32_t p1, uint32_t p2, float customStiffness) {
-		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
-		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
-		float dist = std::sqrt(dx * dx + dy * dy);
-		AddDistanceConstraint(p1, p2, dist, customStiffness);
-		};
-
-	// A. DIŞ ZIRHI BAĞLA
-	for (int i = 0; i < outerCount; ++i)
-	{
-		// 1. STRUCTURAL YAY (ÇELİK ZİNCİR): 
-		// Kullanıcının stiffness değerini eziyoruz! Dış halkalar asla kopmamalı. 
-		// Daima 1.0f veriyoruz ki Area Constraint'in hesabı şaşmasın.
-		connectSpring(outerIds[i], outerIds[(i + 1) % outerCount], 1.0f);
-
-		// 2. BENDING YAY (JÖLELİK BURADA!): 
-		// Yüzeyin kağıt gibi katlanmasını engeller ama yumuşakça bükülmesine izin verir.
-		connectSpring(outerIds[i], outerIds[(i + 2) % outerCount], stiffness);
-
-		// 3. İÇ ETE DESTEK: 
-		// Dış zırh içeriye doğru yaylanabilsin diye çok zayıf bir bağ.
-		int innerTarget = i / (outerCount / innerCount);
-		connectSpring(outerIds[i], innerIds[innerTarget], stiffness * 0.5f);
-	}
-
-	// B. İÇ ETİ BAĞLA (SU GİBİ AKIŞKAN)
-	for (int i = 0; i < innerCount; ++i)
-	{
-		connectSpring(innerIds[i], innerIds[(i + 1) % innerCount], stiffness * 0.5f);
-		connectSpring(innerIds[i], innerIds[(i + 2) % innerCount], stiffness * 0.5f);
-
-		int coreTarget = i / (innerCount / coreCount);
-		connectSpring(innerIds[i], coreIds[coreTarget], stiffness * 0.2f);
-	}
-
-	// C. ÇEKİRDEĞİ BAĞLA (MERKEZ DİREK)
-	for (int i = 0; i < coreCount; ++i)
-	{
-		connectSpring(coreIds[i], coreIds[(i + 1) % coreCount], stiffness);
-		connectSpring(coreIds[i], coreIds[(i + 2) % coreCount], stiffness);
-		connectSpring(coreIds[i], coreIds[(i + 3) % coreCount], stiffness);
-	}
-
-	// ==========================================
-	// 5. HACİM KORUMASI (AREA CONSTRAINT - BALON BÜYÜSÜ)
-	// ==========================================
-	// Sadece dış kabuğa Area Constraint veriyoruz! İçerideki parçacıklar sadece yaylarla esneyecek.
-	// Kusursuz bir dairenin alanı: PI * r^2
-	float restArea = PI * radius * radius;
-
-	// Pressure 1.0f veriyoruz ki top ezilse bile hacmini korumak için sağdan soldan pırtlasın!
-	AddAreaConstraint(outerIds, restArea, 1.0f);
-}
-
-void PhysicsEngine::CreateRealisticJiggle(float centerX, float centerY, float radius, float particleMass, float stiffness)
-{
-	m_currentBodyId++;
-
-	const int outerCount = 40; // Çok kalabalık yapmıyoruz ki esnekliği pürüzsüz olsun.
+	const int outerCount = 40;
 	std::vector<uint32_t> boundIds;
 	boundIds.reserve(outerCount);
 
