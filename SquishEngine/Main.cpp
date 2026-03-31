@@ -3,11 +3,11 @@
 #include "ParticlePipeline.h"
 #include <windows.h>
 
-#include <fstream>
-#include <string>
-#include <vector>
-
 #include <chrono>
+
+// =====================================================================================================
+// PLEASE GO TO THE "SIMULATIONS" REGION IN THE MAIN FUNCTION TO SWITCH BETWEEN DIFFERENT SIMULATIONS!!
+// =====================================================================================================
 
 // GLOBAL VARIABLES
 Renderer g_renderer;
@@ -29,7 +29,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // AllocConsole(); // Console for debugging
     FILE* stream; freopen_s(&stream, "CONOUT$", "w", stdout);
 
     // 1. OPEN WINDOW
@@ -56,7 +55,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 #pragma region Simulations
 
 	// ============================================================================
-	int sim = 0; // Change this to switch between different simulations!!
+	int sim = 2; // Change this to switch between different simulations!!
 	// NOTE: To change simulation overall softness, adjust the solver iterations with g_physics.SetWorldSoftness(iterations) (More iterations = stiffer body, Less iterations = softer body)
     // ============================================================================
 
@@ -74,8 +73,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         // SMALL & BIG JELLY BALLS
         // ============================================================================
         g_physics.SetWorldSoftness(10);
-        g_physics.CreateSoftBall(0.0f, 0.0f, 0.1f, 1.0f, 0.5f);
-        g_physics.CreateSoftBall(0.0f, -0.6f, 0.25f, 25.0f, 0.01f);
+        g_physics.CreateSoftBall(0.0f, 0.0f, 0.1f, 0.2f, 0.5f);
+        g_physics.CreateSoftBall(0.0f, -0.6f, 0.25f, 1.0f, 0.01f);
 
     }
     else if (sim == 2)
@@ -83,14 +82,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         // ============================================================================
 		// SMALL JELLY BALL PLAYGROUND
         // ============================================================================
-        g_physics.SetWorldSoftness(10);
-        g_physics.CreateSoftBall(0.0f, 0.8f, 0.1f, 1.0f, 0.25f);
-        g_physics.CreateSoftBall(0.1f, 0.5f, 0.1f, 1.0f, 0.25f);
-        g_physics.CreateSoftBall(0.1f, 0.0f, 0.1f, 1.0f, 0.25f);
-        g_physics.CreateSoftBall(-0.3f, 0.0f, 0.1f, 1.0f, 0.25f);
-        g_physics.CreateSoftBall(0.25f, -0.8f, 0.1f, 1.0f, 0.75f);
-        g_physics.CreateSoftBall(0.0f, -0.8f, 0.1f, 1.0f, 0.25f);
-        g_physics.CreateSoftBall(-0.25f, -0.8f, 0.1f, 1.0f, 0.2f);
+        g_physics.SetWorldSoftness(16);
+        g_physics.CreateSoftBall(0.0f, 0.5f, 0.1f, 0.2f, 0.25f);
+        g_physics.CreateSoftBall(0.1f, 0.25f, 0.1f, 0.2f, 0.25f);
+        g_physics.CreateSoftBall(0.1f, 0.0f, 0.1f, 0.4f, 0.25f);
+        g_physics.CreateSoftBall(-0.3f, 0.0f, 0.1f, 0.2f, 0.25f);
+        g_physics.CreateSoftBall(0.25f, -0.8f, 0.1f, 0.2f, 0.75f);
+        g_physics.CreateSoftBall(0.0f, -0.8f, 0.1f, 0.5f, 0.25f);
+        g_physics.CreateSoftBall(-0.25f, -0.8f, 0.1f, 0.2f, 0.2f);
     }
     else if (sim == 3)
     {
@@ -211,7 +210,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 
 HWND SetupWindow(HINSTANCE hInstance, int width, int height)
 {
-    const wchar_t* CLASS_NAME = L"BenchmarkWindow";
+    const wchar_t* CLASS_NAME = L"SimulationWindow";
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -224,7 +223,7 @@ HWND SetupWindow(HINSTANCE hInstance, int width, int height)
     RECT rc = { 0, 0, (LONG)width, (LONG)height };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 
-    HWND hWnd = CreateWindow(CLASS_NAME, L"BenchmarkDX12",
+    HWND hWnd = CreateWindow(CLASS_NAME, L"Squish Engine",
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT,
         rc.right - rc.left, rc.bottom - rc.top,

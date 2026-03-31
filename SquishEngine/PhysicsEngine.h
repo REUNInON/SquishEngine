@@ -20,7 +20,7 @@ struct Particle2D
 
 	uint32_t bodyId; // Groups particles into bodies for collision management.
 
-	// TODO: Carry particle radius here later. But it will add 4 bytes to the struct!! Currently a global constant is used.
+	// TODO: Carry particle radius here later. It will add 4 bytes to the struct!! Currently a global constant is used.
 };
 
 /// <summary>

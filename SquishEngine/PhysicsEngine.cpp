@@ -42,10 +42,10 @@ void PhysicsEngine::StepSimulation(float deltaTime)
 /// Creates a new particle with the specified position and mass, initializes its velocity and force to zero, and returns its index in the particle list.
 /// The inverse mass is calculated for efficient physics calculations, handling the case of zero or negative mass appropriately.
 /// </summary>
-/// <param name="x"></param>
-/// <param name="y"></param>
-/// <param name="mass"></param>
-/// <returns></returns>
+/// <param name="x">The x-coordinate of the particle's position.</param>
+/// <param name="y">The y-coordinate of the particle's position.</param>
+/// <param name="mass">The mass of the particle.</param>
+/// <returns>The index of the newly added particle in the particle list.</returns>
 uint32_t PhysicsEngine::AddParticle(float x, float y, float mass)
 {
 	Particle2D p;
@@ -76,10 +76,10 @@ uint32_t PhysicsEngine::AddParticle(float x, float y, float mass)
 /// The constraint is stored in a list for later processing during the simulation step to maintain the specified distance between the particles.
 /// Stiffness controls how strongly the constraint is enforced, allowing for soft or rigid connections.
 /// </summary>
-/// <param name="p1"></param>
-/// <param name="p2"></param>
-/// <param name="restLength"></param>
-/// <param name="stiffness"></param>
+/// <param name="p1">The index of the first particle in the constraint.</param>
+/// <param name="p2">The index of the second particle in the constraint.</param>
+/// <param name="restLength">The desired rest length between the two particles.</param>
+/// <param name="stiffness">The stiffness of the constraint, controlling how strongly it is enforced.</param>
 void PhysicsEngine::AddDistanceConstraint(uint32_t p1, uint32_t p2, float restLength, float stiffness)
 {
 	DistanceConstraint constraint;
@@ -93,13 +93,12 @@ void PhysicsEngine::AddDistanceConstraint(uint32_t p1, uint32_t p2, float restLe
 
 /// <summary>
 /// Adds an area constraint that maintains a specified area for a group of particles defined by their indices.
-/// The rest area is the ideal area calculated using the Shoelace formula, and the pressure parameter controls how much the particles should resist changes to this area (0.8: deflated, 1.0: normal, 1.2: inflated).
-/// The constraint is stored in a list for later processing during the simulation step to maintain the specified area among the particles.
-/// The function checks that the number of particles is between 3 and a defined maximum to ensure valid area constraints.
+/// Calculated using the Shoelace formula, and the pressure parameter controls how much the particles should resist changes to this area (0.8: deflated, 1.0: normal, 1.2: inflated).
+/// The constraint is stored in a vector for later processing during the simulation step to maintain the specified area among the particles.
 /// </summary>
-/// <param name="particleIndices"></param>
-/// <param name="restArea"></param>
-/// <param name="pressure"></param>
+/// <param name="particleIndices">A vector of indices representing the particles involved in the area constraint.</param>
+/// <param name="restArea">The desired rest area for the group of particles.</param>
+/// <param name="pressure">The pressure parameter controlling how strongly the particles resist changes to the area.</param>
 void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndices, float restArea, float pressure)
 {
 	if (particleIndices.size() < 3) return; // Area constraint requires at least 3 particles.
@@ -125,7 +124,7 @@ void PhysicsEngine::AddAreaConstraint(const std::vector<uint32_t>& particleIndic
 /// After integration, forces are reset for the next simulation step.
 /// NON-MULTITHREADED: This function is designed to be called from a single thread.
 /// </summary>
-/// <param name="deltaTime">The time step (in seconds) over which to integrate the simulation.</param>
+/// <param name="deltaTime">The time step (in seconds)</param>
 void PhysicsEngine::Integrate(float deltaTime)
 {
 	// World Forces
@@ -169,7 +168,6 @@ void PhysicsEngine::Integrate(float deltaTime)
 /// The solver runs for a specified number of iterations, where each iteration applies corrections to particle positions based on the constraints.
 /// Distance constraints ensure that pairs of particles maintain a specified rest length, while area constraints ensure that groups of particles maintain a specified area.
 /// The stiffness and pressure parameters control how strongly the constraints are enforced, allowing for soft or rigid behavior.
-/// This function is designed to be called from a single thread and modifies particle positions directly to satisfy the constraints.
 /// </summary>
 void PhysicsEngine::SolveConstraints()
 {
@@ -192,7 +190,7 @@ void PhysicsEngine::SolveConstraints()
 			Particle2D& p1 = m_particles[constraint.p1];
 			Particle2D& p2 = m_particles[constraint.p2];
 
-			// 1.1. Calculate the current distance between the two particles.
+			// 1.1. Calculate the current distance between the two particles. (Pythagorean Theorem)
 			float deltaX = p2.position[0] - p1.position[0];
 			float deltaY = p2.position[1] - p1.position[1];
 
@@ -285,7 +283,7 @@ void PhysicsEngine::SolveConstraints()
 				}
 			}
 
-			// 2.4. Apply PBD Correction
+			// 2.4. Apply Position Based Dynamics (PBD) Correction
 			if (denominator <= 0.0f) continue; // Skip if all particles are immovable to avoid division by zero.
 
 			// PBD Multiplier (Lambda)
@@ -308,12 +306,12 @@ void PhysicsEngine::SolveConstraints()
 		}
 
 		// ======================================
-		// 3. SOLVE PARTICLE-PARTICLE COLLISIONS
+		// 3. SOLVE PARTICLE COLLISIONS
 		// ======================================
 		if (m_spatialHash)
 		{
 			float minDistance = PhysicsEngine::GLOBAL_PARTICLE_RADIUS * 2.0f; // Minimum distance to avoid overlap (2 * radius)
-			float minDistanceSq = minDistance * minDistance; // Squared minimum distance for optimization
+			float minDistanceSq = minDistance * minDistance; // Squared Minimum Distance
 
 			for (uint32_t i = 0; i < m_particles.size(); ++i)
 			{
@@ -329,10 +327,10 @@ void PhysicsEngine::SolveConstraints()
 				{
 					for (int dx = -1; dx <= 1; ++dx)
 					{
-						// Komşu hücrenin ID'sini bul
+						// Find neighboring cell's hash
 						uint32_t hash = HashCoordinates(xi + dx, yi + dy, m_spatialHash->m_tableSize);
 
-						// O hücredeki parçacık listesinin başlangıç ve bitiş indekslerini çek
+						// Get start and end indices of particles in this cell from the spatial hash
 						uint32_t startIdx = m_spatialHash->m_cellStart[hash];
 						uint32_t nextHash = hash + 1;
 						uint32_t endIdx = (nextHash < m_spatialHash->m_cellStart.size()) 
@@ -342,14 +340,12 @@ void PhysicsEngine::SolveConstraints()
 						// Old version: Bad because it can cause out-of-bounds access when hash is the last index of m_cellStart
 						// uint32_t endIdx = m_spatialHash->m_cellStart[hash + 1];
 
-						// 3.3 Narrow Phase: Sadece o hücredeki komşularla tek tek mesafe ölç
+						// 3.3 Narrow Phase: Only check particles in the same or neighboring cells for collisions.
 						for (uint32_t k = startIdx; k < endIdx; ++k)
 						{
 							uint32_t neighborIdx = m_spatialHash->m_sortedParticleIDs[k];
 
-							// ÇİFT KONTROLÜ ÖNLEME (Çok Kritik!): 
-							// Kendi kendisiyle çarpışmasını engeller. 
-							// Ayrıca 5. parçacık 8. ile çarpıştıysa, 8. parçacığa gelindiğinde tekrar 5'e bakmasını engeller. (Performansı 2'ye katlar)
+							// If neighbor index is less than or equal to current index, skip to avoid double checking pairs (A-B and B-A)
 							if (neighborIdx <= i) continue;
 
 							Particle2D& p2 = m_particles[neighborIdx];
@@ -357,33 +353,33 @@ void PhysicsEngine::SolveConstraints()
 							// Skip if same body.
 							if (p1.bodyId == p2.bodyId) continue;
 
-							// X ve Y eksenindeki fark (Vektör)
+							// Calculate distance between p1 and p2
 							float diffX = p1.position[0] - p2.position[0];
 							float diffY = p1.position[1] - p2.position[1];
 
-							// Pisagor (c^2 = a^2 + b^2) - Uzaklığın karesi
+							// Pythagorean Theorem (c^2 = a^2 + b^2) - Squared distance
 							float distSq = diffX * diffX + diffY * diffY;
 
-							// Eğer uzaklığın karesi, minimum mesafenin karesinden küçükse ÇARPIŞMA VARDIR!
-							// (0.00001f kontrolü, iki parçacık tam üst üste binerse sıfıra bölme hatasını engeller)
+							// If the squared distance is less than the squared minimum distance, we have a collision and need to resolve it.
+							// (0.00001f check prevents division by zero if two particles are exactly on top of each other)
 							if (distSq < minDistanceSq && distSq > 0.00001f)
 							{
-								// Sadece çarpışma varsa o pahalı karekök (sqrt) işlemini yap
+								// Square root (sqrt) operation only if there is a collision
 								float dist = std::sqrt(distSq);
 
-								// Ne kadar iç içe geçmişler? (Penetration)
+								// Calculate penetration (overlap)
 								float penetration = minDistance - dist;
 
-								// İtme yönünü bul (Normal Vektörü) - diff vektörünü normalize ediyoruz
+								// Find the push direction (normalized vector from p2 to p1)
 								float normalX = diffX / dist;
 								float normalY = diffY / dist;
 
-								// Toplam ağırlığa (inverse mass) göre kimi ne kadar iteceğimizi hesapla
+								// Calculate how much to push each particle based on their inverse mass
 								float totalInvMass = p1.inverseMass + p2.inverseMass;
 								float correctionAmount = penetration / totalInvMass;
 
-								// VE SQUISH! İki parçacığı zıt yönlere doğru fırlat.
-								// PBD kuralı: p1'i diff yönünde itersek, p2'yi tam tersi yönde iteriz.
+								// Push particles apart.
+								// PBD RULE: P1 and P2 should be pushed to opposite directions.
 								p1.position[0] += normalX * correctionAmount * p1.inverseMass;
 								p1.position[1] += normalY * correctionAmount * p1.inverseMass;
 
@@ -438,21 +434,26 @@ void PhysicsEngine::UpdateVelocities(float deltaTime)
 
 }
 
+// ----------------------------------------
+// ========================================
+// PROCEDURAL MESHES FOR TESTING THE ENGINE
+// ========================================
+// ----------------------------------------
+
 void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, float particleMass, float stiffness)
 {
-	m_currentBodyId++; // Kendi kendini patlatmasını engeller
+	m_currentBodyId++;
 
-	int res = 16; // 16x16 ızgara (Çeperde 60 yüksek çözünürlüklü nokta eder)
+	int res = 16;
 	float spacing = size / static_cast<float>(res - 1);
 
-	// Kutunun sol alt köşesini hesaplıyoruz
 	float startX = centerX - size * 0.5f;
 	float startY = centerY - size * 0.5f;
 
 	std::vector<std::vector<int>> grid(res, std::vector<int>(res, -1));
 
 	// ==========================================
-	// 1. KADEME: YÜKSEK ÇÖZÜNÜRLÜKLÜ IZGARA DİZİLİMİ
+	// 1. MESH
 	// ==========================================
 	for (int y = 0; y < res; ++y)
 	{
@@ -465,7 +466,7 @@ void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, flo
 	}
 
 	// ==========================================
-	// 2. KADEME: YAYLARI BAĞLAMA (Çelik Çerçeve + Jöle İç Organlar)
+	// 2. CONNECT THE SPRINGS
 	// ==========================================
 	auto connectSpring = [&](int p1, int p2, float customStiffness) {
 		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
@@ -480,14 +481,11 @@ void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, flo
 		{
 			int p = grid[y][x];
 
-			// Dış kenarlar çelik gibi (1.0f) olsun ki kutunun dış yüzeyi jilet gibi kalsın.
-			// İçerisi yumuşak (stiffness) olsun ki lömbürdesin.
 			bool isTop = (y == res - 1);
 			bool isBottom = (y == 0);
 			bool isLeft = (x == 0);
 			bool isRight = (x == res - 1);
 
-			// Yatay ve Dikey Bağlar
 			if (x < res - 1) {
 				float s = (isTop || isBottom) ? 1.0f : stiffness;
 				connectSpring(p, grid[y][x + 1], s);
@@ -497,17 +495,14 @@ void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, flo
 				connectSpring(p, grid[y + 1][x], s);
 			}
 
-			// Çapraz Bağlar (Kutunun çökmesini ve kağıt gibi katlanmasını engeller)
-			// İçerideki çapraz bağları stiffness ile jöleleştiriyoruz
 			if (x < res - 1 && y < res - 1) connectSpring(p, grid[y + 1][x + 1], stiffness * 0.8f);
 			if (x > 0 && y < res - 1)       connectSpring(p, grid[y + 1][x - 1], stiffness * 0.8f);
 		}
 	}
 
 	// ==========================================
-	// 3. KADEME: HÜCRESEL BASINÇ (Balon Etkisini Yok Eden Altın Vuruş)
+	// 3. PRESSURE
 	// ==========================================
-	// Kutuyu dev bir balona çevirmiyoruz. İçindeki minik kareleri üçgenlere bölüp koruyoruz.
 	for (int y = 0; y < res - 1; ++y)
 	{
 		for (int x = 0; x < res - 1; ++x)
@@ -517,7 +512,6 @@ void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, flo
 			int pTR = grid[y + 1][x + 1];
 			int pTL = grid[y + 1][x];
 
-			// Minik kareyi iki üçgene bölüp hacmi kilitle!
 			auto addTriArea = [&](int i1, int i2, int i3) {
 				std::vector<uint32_t> tri = { static_cast<uint32_t>(i1), static_cast<uint32_t>(i2), static_cast<uint32_t>(i3) };
 				float area = 0.0f;
@@ -526,7 +520,7 @@ void PhysicsEngine::CreateJellyBox(float centerX, float centerY, float size, flo
 					const Particle2D& pB = m_particles[tri[(j + 1) % 3]];
 					area += (pA.position[0] * pB.position[1]) - (pB.position[0] * pA.position[1]);
 				}
-				// Minik hücreler asla sönmeyecek, asla topa dönüşmeyecek!
+
 				AddAreaConstraint(tri, std::abs(area * 0.5f), 1.0f);
 				};
 
@@ -543,7 +537,7 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 	const float PI = 3.14159265f;
 
 	// ==========================================
-	// 1. KADEME: DIŞ ZIRH (128 Parçacık - Aşılmaz Duvar)
+	// 1. OUTER AREA
 	// ==========================================
 	const int outerCount = 128;
 	std::vector<uint32_t> outerIds;
@@ -558,7 +552,7 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 	}
 
 	// ==========================================
-	// 2. KADEME: İÇ ET (32 Parçacık - Destek Amortisörü)
+	// 2. INNER AREA
 	// ==========================================
 	const int innerCount = 32;
 	std::vector<uint32_t> innerIds;
@@ -574,7 +568,7 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 	}
 
 	// ==========================================
-	// 3. KADEME: ÇEKİRDEK (8 Parçacık - Çökme Önleyici)
+	// 3. CORE AREA
 	// ==========================================
 	const int coreCount = 8;
 	std::vector<uint32_t> coreIds;
@@ -590,8 +584,8 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 	}
 
 	// ==========================================
-		// 4. YAYLARI BAĞLAMA (MÜKEMMEL SQUISH MİMARİSİ)
-		// ==========================================
+	// 4. CONNECT THE SPRINGS
+	// ==========================================
 	auto connectSpring = [&](uint32_t p1, uint32_t p2, float customStiffness) {
 		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
 		float dy = m_particles[p1].position[1] - m_particles[p2].position[1];
@@ -599,25 +593,17 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 		AddDistanceConstraint(p1, p2, dist, customStiffness);
 		};
 
-	// A. DIŞ ZIRHI BAĞLA
+	// A. CONNECT OUTER AREA
 	for (int i = 0; i < outerCount; ++i)
 	{
-		// 1. STRUCTURAL YAY (ÇELİK ZİNCİR): 
-		// Kullanıcının stiffness değerini eziyoruz! Dış halkalar asla kopmamalı. 
-		// Daima 1.0f veriyoruz ki Area Constraint'in hesabı şaşmasın.
+
 		connectSpring(outerIds[i], outerIds[(i + 1) % outerCount], 1.0f);
-
-		// 2. BENDING YAY (JÖLELİK BURADA!): 
-		// Yüzeyin kağıt gibi katlanmasını engeller ama yumuşakça bükülmesine izin verir.
 		connectSpring(outerIds[i], outerIds[(i + 2) % outerCount], stiffness);
-
-		// 3. İÇ ETE DESTEK: 
-		// Dış zırh içeriye doğru yaylanabilsin diye çok zayıf bir bağ.
 		int innerTarget = i / (outerCount / innerCount);
 		connectSpring(outerIds[i], innerIds[innerTarget], stiffness * 0.5f);
 	}
 
-	// B. İÇ ETİ BAĞLA (SU GİBİ AKIŞKAN)
+	// B. CONNECT INNER AREA
 	for (int i = 0; i < innerCount; ++i)
 	{
 		connectSpring(innerIds[i], innerIds[(i + 1) % innerCount], stiffness * 0.5f);
@@ -627,7 +613,7 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 		connectSpring(innerIds[i], coreIds[coreTarget], stiffness * 0.2f);
 	}
 
-	// C. ÇEKİRDEĞİ BAĞLA (MERKEZ DİREK)
+	// C. CONNECT CORE AREA
 	for (int i = 0; i < coreCount; ++i)
 	{
 		connectSpring(coreIds[i], coreIds[(i + 1) % coreCount], stiffness);
@@ -636,9 +622,8 @@ void PhysicsEngine::CreateSoftBall(float centerX, float centerY, float radius, f
 	}
 
 	// ==========================================
-	// 5. HACİM KORUMASI (AREA CONSTRAINT)
+	// 5. AREA CONSTRAINT
 	// ==========================================
-	// Maksimum limitimiz (MAX_AREA_PARTICLES) 4096 olduğu için 128'i buraya rahatça verebiliriz.
 	float restArea = PI * radius * radius;
 	AddAreaConstraint(outerIds, restArea, 1.0f);
 }
@@ -654,7 +639,7 @@ void PhysicsEngine::CreateHangingJelly(float centerX, float centerY, float radiu
 	const float PI = 3.14159265f;
 
 	// ==========================================
-	// 1. DERİYİ DİZ VE TAVANA ÇİVİLE
+	// 1. THE TOP PART AND PINS
 	// ==========================================
 	for (int i = 0; i < outerCount; ++i)
 	{
@@ -662,13 +647,12 @@ void PhysicsEngine::CreateHangingJelly(float centerX, float centerY, float radiu
 		float px = centerX + std::cos(angle) * radius;
 		float py = centerY + std::sin(angle) * radius;
 
-		// En üstteki %15'lik kısmı duvara çivile (Kütlesini 0 yapıyoruz)
 		float mass = (py > centerY + (radius * 0.85f)) ? 0.0f : particleMass;
 		boundIds.push_back(AddParticle(px, py, mass));
 	}
 
 	// ==========================================
-	// 2. YAYLARI BAĞLA (İçi Boş Balon Taktikleri)
+	// 2. CONNECT THE SPRINGS
 	// ==========================================
 	auto connectSpring = [&](uint32_t p1, uint32_t p2, float customStiffness) {
 		float dx = m_particles[p1].position[0] - m_particles[p2].position[0];
@@ -679,23 +663,17 @@ void PhysicsEngine::CreateHangingJelly(float centerX, float centerY, float radiu
 
 	for (int i = 0; i < outerCount; ++i)
 	{
-		// A. YAPISAL YAY (Structural): Deri kopmasın diye KATI (1.0f).
-		// (Bisiklet zinciri mantığı: Uzamaz ama mükemmel katlanır!)
+
 		connectSpring(boundIds[i], boundIds[(i + 1) % outerCount], stiffness);
 
-		// B. BÜKÜLME YAYI (Bending): İşte lömbürdeyen sümük/meme efekti BURADA!
-		// Senin parametreden gelen o düşük stiffness'ı buraya veriyoruz.
 		connectSpring(boundIds[i], boundIds[(i + 2) % outerCount], stiffness);
 
-		// Kendi üstüne çökmesin diye ekstra bir destek kıkırdağı
 		connectSpring(boundIds[i], boundIds[(i + 3) % outerCount], stiffness * 0.5f);
 	}
 
 	// ==========================================
-	// 3. HACİM KORUMASI (İç basınca direnen su)
+	// 3. AREA CONSTRAINT
 	// ==========================================
 	float restArea = PI * radius * radius;
-
-	// Pressure 1.0f: Şekil ezildikçe hacmi korumak için sağdan soldan şişecek!
 	AddAreaConstraint(boundIds, restArea, 1.0f);
 }
