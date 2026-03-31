@@ -59,9 +59,17 @@ uint32_t PhysicsEngine::AddParticle(float x, float y, float mass)
 	// 3. Initialize applied force to zero
 	p.force[0] = 0.0f; p.force[1] = 0.0f;
 
-	// 4. Set mass
+	// 4. Set mass & handle inverse mass calculation
 	p.mass = mass;
-	p.inverseMass = (mass > 0.0f) * (1.0f / (mass + (mass <= 0.0f))); // mass <= 0 Case Handled: 0 * (1 / (mass + 1))
+
+	if (mass > 0.0f)
+	{
+		p.inverseMass = 1.0f / mass;
+	}
+	else
+	{
+		p.inverseMass = 0.0f;
+	}
 
 	p.bodyId = m_currentBodyId;
 	
